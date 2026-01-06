@@ -14,14 +14,26 @@
  * - Du willst nach dem Sammeln der Daten eine zweite, reine "Code-Prüfung"
  *   (ohne neue YouTube-Requests), um nur "deutsche Kanäle" weiterzuleiten.
  *
- * Regeln für Prozess 2 (aktuell):
+ * Regeln für Prozess 2 (NEU - aktuelle Reihenfolge):
  * 1) channelInfo.country muss "Deutschland" sein (case-insensitive)
- * 2) Textprüfung: In channelInfo.title, channelInfo.description und videos[].title
- *    müssen mindestens 5 verschiedene Wörter aus deutschArray vorkommen.
+ *
+ * 2) NON_GERMAN_UNICODE_CHARS Check (ZUERST!)
+ *    - Prüfe JEWEILS EINZELN:
+ *      - channelInfo.title
+ *      - channelInfo.description
+ *      - videos[i].title (alle)
+ *    - Wenn EIN Feld mehr als 3 VERSCHIEDENE (unique) "nicht-deutsche" Zeichen enthält:
+ *      => Kanal ist vermutlich nicht deutsch => RAUS (nicht in vorgefiltertCode schreiben)
+ *    - Zusätzlich: Report "wo & welche Zeichen" (für Logging/Debug)
+ *
+ * 3) DEUTSCH_WORDS_ARRAY Check (DANACH!)
+ *    - Prüfe den GESAMTEN Text des Kanals (title + description + alle video titles)
+ *    - Wenn weniger als 5 VERSCHIEDENE (unique) deutsche Wörter gefunden werden:
+ *      => Kanal vermutlich nicht deutsch => RAUS
  *
  * Hinweis:
- * - Später kannst du weitere Regeln hinzufügen.
- * - Wir speichern Metadaten unter doc.codeCheck, damit du siehst: warum drin / warum raus.
+ * - Wir speichern Metadaten unter doc.codeCheck (nur für "INCLUDED" Docs),
+ *   damit du siehst, warum ein Kanal durchgelassen wurde.
  */
 
 import express from "express";
@@ -81,12 +93,18 @@ const AI_SIM_MAX_MS_DEFAULT = 75_000;
 const VIDEOS_LIMIT_DEFAULT = 30;
 
 /**
- * Default Schwelle:
- * Wenn mehr als 5 Treffer → raus
+ * NEU (Prozess 2):
+ * - Wenn EIN Feld (channel title, channel description oder irgendein video title)
+ *   mehr als 3 VERSCHIEDENE (unique) BadChars hat => raus.
  */
-const DEFAULT_MAX_BAD_CHAR_HITS = 5;
+const DEFAULT_MAX_BAD_CHARS_DISTINCT_PER_FIELD = 3;
 
-// Deutsch-Wortliste (Default). Du kannst sie per Request überschreiben.
+/**
+ * NEU (Prozess 2):
+ * - Wenn im gesamten Kanaltext (title+desc+videos titles) weniger als 5
+ *   VERSCHIEDENE (unique) Wörter aus DEUTSCH_WORDS_ARRAY vorkommen => raus.
+ */
+const DEFAULT_MIN_GERMAN_WORDS_DISTINCT_TOTAL = 5;
 
 // ---------------------------------------------------------------------------
 // Express Setup
@@ -170,79 +188,149 @@ function buildChannelContentText(doc) {
 }
 
 /**
- * Regel 2: Wortlisten-Check:
- * "Mindestens X verschiedene Wörter aus deutschArray müssen vorkommen"
- *
- * Rückgabe:
- * - ok: true/false
- * - hitsCount: Anzahl verschiedener Treffer
- * - hitsWords: welche Wörter gefunden wurden (für Debug/Transparenz)
+ * Helper: Extrahiert Texte, die wir getrennt prüfen wollen.
+ * - title
+ * - description
+ * - videoTitles[] (Array)
  */
-function germanWordListCheck(doc, deutschArray, minDistinctHits = 5) {
-  const content = buildChannelContentText(doc);
-  const tokens = tokenizeText(content);
+function getTextsToCheck(doc) {
+  const channelTitle = String(doc?.channelInfo?.title || "");
+  const channelDescription = String(doc?.channelInfo?.description || "");
+  const videoTitles = Array.isArray(doc?.videos)
+    ? doc.videos.map((v) => String(v?.title || ""))
+    : [];
+  return { channelTitle, channelDescription, videoTitles };
+}
 
+/**
+ * -------------------------------------------
+ * Regel 2 (NEU): NON_GERMAN_UNICODE_CHARS
+ * -------------------------------------------
+ * Wir prüfen pro Feld: "wie viele VERSCHIEDENE (unique) bad chars kommen vor?"
+ *
+ * Wenn EIN Feld > maxDistinctPerField hat => ok=false (Kanal raus)
+ *
+ * Zusätzlich liefern wir "matches" zurück, damit du sehen kannst:
+ * - in welchem Feld
+ * - welche Zeichen
+ * - und ein kurzer Textausschnitt
+ */
+function scanDistinctBadCharsInText(text, badSet) {
+  const found = new Set();
+
+  // for..of: unicode-sicher (Codepoints)
+  for (const ch of String(text || "")) {
+    if (badSet.has(ch)) found.add(ch);
+  }
+
+  return {
+    distinctCount: found.size,
+    chars: Array.from(found),
+  };
+}
+
+function nonGermanCharsDistinctPerFieldCheck(
+  doc,
+  badCharArray,
+  maxDistinctPerField = 3
+) {
+  const list = Array.isArray(badCharArray) ? badCharArray : [];
+  const badSet = new Set(list.map((c) => String(c || "")).filter(Boolean));
+
+  // Wenn keine bad chars definiert: Regel bestanden
+  if (badSet.size === 0) {
+    return { ok: true, maxDistinctPerField, matches: [] };
+  }
+
+  const { channelTitle, channelDescription, videoTitles } =
+    getTextsToCheck(doc);
+
+  const matches = [];
+  let ok = true;
+
+  // 1) channel title
+  {
+    const r = scanDistinctBadCharsInText(channelTitle, badSet);
+    if (r.distinctCount > 0) {
+      matches.push({
+        field: "channelInfo.title",
+        distinctCount: r.distinctCount,
+        chars: r.chars.slice(0, 50),
+        textSample: channelTitle.slice(0, 140),
+      });
+    }
+    if (r.distinctCount > maxDistinctPerField) ok = false;
+  }
+
+  // 2) channel description
+  {
+    const r = scanDistinctBadCharsInText(channelDescription, badSet);
+    if (r.distinctCount > 0) {
+      matches.push({
+        field: "channelInfo.description",
+        distinctCount: r.distinctCount,
+        chars: r.chars.slice(0, 50),
+        textSample: channelDescription.slice(0, 140),
+      });
+    }
+    if (r.distinctCount > maxDistinctPerField) ok = false;
+  }
+
+  // 3) video titles
+  for (let i = 0; i < videoTitles.length; i++) {
+    const title = videoTitles[i];
+    const r = scanDistinctBadCharsInText(title, badSet);
+
+    if (r.distinctCount > 0) {
+      matches.push({
+        field: `videos[${i}].title`,
+        distinctCount: r.distinctCount,
+        chars: r.chars.slice(0, 50),
+        textSample: title.slice(0, 140),
+      });
+    }
+
+    if (r.distinctCount > maxDistinctPerField) ok = false;
+  }
+
+  return { ok, maxDistinctPerField, matches };
+}
+
+/**
+ * -------------------------------------------
+ * Regel 3 (NEU): DEUTSCH_WORDS_ARRAY
+ * -------------------------------------------
+ * Wir prüfen den GESAMTEN Kanaltext zusammen (title + desc + video titles).
+ *
+ * Wichtig:
+ * - gezählt werden VERSCHIEDENE (unique) deutsche Wörter
+ * - minDistinct = 5 => wenn < 5 => ok=false (Kanal raus)
+ *
+ * Rückgabe enthält zusätzlich ein "Sample" gefundener Wörter.
+ */
+function germanWordsDistinctTotalCheck(doc, deutschArray, minDistinct = 5) {
   const list = Array.isArray(deutschArray) ? deutschArray : [];
+
+  // Deutsch-Wortliste normalisieren
   const deutschSet = new Set(
     list.map((w) => String(w || "").toLowerCase()).filter(Boolean)
   );
 
+  // gesamter Kanaltext
+  const content = buildChannelContentText(doc);
+  const tokens = tokenizeText(content);
+
+  // Hier zählen wir UNIQUE-Wörter (distinct)
   const found = [];
   for (const w of deutschSet) {
     if (tokens.has(w)) found.push(w);
   }
 
   return {
-    ok: found.length >= minDistinctHits,
-    hitsCount: found.length,
-    hitsWords: found.slice(0, 50), // cap fürs Logging/DB
-  };
-}
-/**
- * Regel 3: Bad-Character-Check
- * ----------------------------
- * Zählt, wie oft Zeichen aus badCharArray im gesamten Content vorkommen.
- * Wenn Treffer > maxHits → ok=false (also Kanal verwerfen).
- *
- * Rückgabe:
- * - ok: boolean
- * - hitsCount: Anzahl Treffer (Occurrences)
- * - foundCharsDistinct: welche "verschiedenen" Zeichen gefunden wurden (nur Debug)
- */
-function badCharCheck(doc, badCharArray, maxHits = 5) {
-  const list = Array.isArray(badCharArray) ? badCharArray : [];
-  const badSet = new Set(list.map((c) => String(c || "")).filter(Boolean));
-
-  // Wenn keine Bad-Chars definiert: Regel ist automatisch bestanden
-  if (badSet.size === 0) {
-    return { ok: true, hitsCount: 0, foundCharsDistinct: [] };
-  }
-
-  const content = buildChannelContentText(doc);
-  let hits = 0;
-  const foundDistinct = new Set();
-
-  // for..of läuft unicode-sicher über Zeichen (Codepoints)
-  for (const ch of content) {
-    if (badSet.has(ch)) {
-      hits++;
-      foundDistinct.add(ch);
-
-      // Früh abbrechen, wenn ohnehin schon zu viele Treffer
-      if (hits > maxHits) {
-        return {
-          ok: false,
-          hitsCount: hits,
-          foundCharsDistinct: Array.from(foundDistinct).slice(0, 50),
-        };
-      }
-    }
-  }
-
-  return {
-    ok: true,
-    hitsCount: hits,
-    foundCharsDistinct: Array.from(foundDistinct).slice(0, 50),
+    ok: found.length >= minDistinct,
+    minDistinct,
+    hitsDistinct: found.length,
+    wordsFoundSample: found.slice(0, 50),
   };
 }
 
@@ -345,6 +433,10 @@ function createJob({ options }) {
       saved: 0,
       skippedNotDeutschland: 0,
       skippedNotGerman: 0,
+
+      // ✅ NEU: damit UI/Stats nicht "undefined" zeigt
+      skippedBadChars: 0,
+
       errors: 0,
     },
 
@@ -1167,26 +1259,30 @@ async function runJobVorgefiltertToCode(jobId) {
 
   const options = job.options || {};
 
-  const minDistinctGermanWords =
-    typeof options.minDistinctGermanWords === "number"
-      ? Math.max(1, Math.floor(options.minDistinctGermanWords))
-      : 5;
-
+  // Deutsch-Wortliste
   const deutschArray =
     Array.isArray(options.deutschArray) && options.deutschArray.length
       ? options.deutschArray
       : DEUTSCH_WORDS_ARRAY;
 
-  // ✅ NEU: BadChar-Regel Optionen
+  // BadChar-Liste
   const badCharArray =
     Array.isArray(options.badCharArray) && options.badCharArray.length
       ? options.badCharArray
       : NON_GERMAN_UNICODE_CHARS;
 
-  const maxBadCharHits =
-    typeof options.maxBadCharHits === "number"
-      ? Math.max(0, Math.floor(options.maxBadCharHits))
-      : DEFAULT_MAX_BAD_CHAR_HITS;
+  // ✅ NEU: distinct BadChars pro Feld
+  const maxBadCharsDistinctPerField =
+    typeof options.maxBadCharsDistinctPerField === "number"
+      ? Math.max(0, Math.floor(options.maxBadCharsDistinctPerField))
+      : DEFAULT_MAX_BAD_CHARS_DISTINCT_PER_FIELD;
+
+  // ✅ NEU: min distinct deutsche Wörter über gesamten Kanaltext
+  const minDistinctGermanWordsTotal =
+    typeof options.minDistinctGermanWordsTotal === "number"
+      ? Math.max(0, Math.floor(options.minDistinctGermanWordsTotal))
+      : DEFAULT_MIN_GERMAN_WORDS_DISTINCT_TOTAL;
+
   const dryRun = Boolean(options.dryRun);
 
   // limit=0 bedeutet: alle
@@ -1196,10 +1292,10 @@ async function runJobVorgefiltertToCode(jobId) {
       : 0;
 
   emitLog(jobId, "info", "Job gestartet (vorgefiltert → vorgefiltertCode)", {
-    minDistinctGermanWords,
     deutschArraySize: deutschArray.length,
     badCharArraySize: badCharArray.length,
-    maxBadCharHits,
+    maxBadCharsDistinctPerField,
+    minDistinctGermanWordsTotal,
     dryRun,
     limit: limit || "ALL",
   });
@@ -1210,25 +1306,21 @@ async function runJobVorgefiltertToCode(jobId) {
     const totalDocs = await Vorgefiltert.countDocuments();
     const totalPlanned = limit ? Math.min(limit, totalDocs) : totalDocs;
 
-    // Damit dein Frontend (progress current/total) sauber funktioniert,
-    // verwenden wir wieder channelsDone/channelsTotal:
+    // UI progress
     job.progress.channelsTotal = totalPlanned;
     job.progress.channelsDone = 0;
 
-    // Zusätzliche Counter
+    // Counter Prozess 2
     job.progress.scanned = 0;
     job.progress.passedCountry = 0;
     job.progress.passedLanguage = 0;
     job.progress.saved = 0;
     job.progress.skippedNotDeutschland = 0;
     job.progress.skippedNotGerman = 0;
-
-    // ✅ NEU: wie viele wegen BadChars verworfen
     job.progress.skippedBadChars = 0;
-
     job.progress.errors = 0;
 
-    // Cursor: speicherschonend (lädt nicht alles in RAM)
+    // Cursor: speicherschonend
     const cursor = Vorgefiltert.find({}).sort({ _id: 1 }).cursor();
 
     for await (const doc of cursor) {
@@ -1239,32 +1331,69 @@ async function runJobVorgefiltertToCode(jobId) {
       // Fortschritt fürs UI
       job.progress.channelsDone = job.progress.scanned;
 
-      // Regel 1: Country = Deutschland?
+      // Regel 1: Country
       if (!isCountryDeutschland(doc)) {
         job.progress.skippedNotDeutschland++;
         continue;
       }
       job.progress.passedCountry++;
 
-      // Regel 2: mind. X Wörter aus deutschArray?
-      const langRes = germanWordListCheck(
+      // ------------------------------------------------------------
+      // Regel 2 (NEU, zuerst): NON_GERMAN_UNICODE_CHARS (distinct pro Feld)
+      // ------------------------------------------------------------
+      const nonGermanRes = nonGermanCharsDistinctPerFieldCheck(
         doc,
-        deutschArray,
-        minDistinctGermanWords
+        badCharArray,
+        maxBadCharsDistinctPerField
       );
 
-      if (!langRes.ok) {
-        job.progress.skippedNotGerman++;
-        continue;
-      }
-      job.progress.passedLanguage++;
-
-      // ✅ Regel 3: BadChars zählen
-      const badRes = badCharCheck(doc, badCharArray, maxBadCharHits);
-      if (!badRes.ok) {
+      if (!nonGermanRes.ok) {
         job.progress.skippedBadChars++;
+
+        // sehr transparent: wo & welche Zeichen
+        emitLog(
+          jobId,
+          "info",
+          "Skip: zu viele NON_GERMAN_UNICODE_CHARS (distinct) in einem Feld",
+          {
+            youtubeId: doc.youtubeId,
+            maxDistinctPerField: nonGermanRes.maxDistinctPerField,
+            matches: nonGermanRes.matches,
+          }
+        );
+
         continue;
       }
+
+      // ------------------------------------------------------------
+      // Regel 3 (NEU, danach): DEUTSCH_WORDS_ARRAY (distinct über gesamten Kanaltext)
+      // ------------------------------------------------------------
+      const germanRes = germanWordsDistinctTotalCheck(
+        doc,
+        deutschArray,
+        minDistinctGermanWordsTotal
+      );
+
+      if (!germanRes.ok) {
+        job.progress.skippedNotGerman++;
+
+        emitLog(
+          jobId,
+          "info",
+          "Skip: zu wenige deutsche Wörter (distinct) im gesamten Kanaltext",
+          {
+            youtubeId: doc.youtubeId,
+            hitsDistinct: germanRes.hitsDistinct,
+            minDistinct: germanRes.minDistinct,
+            wordsFoundSample: germanRes.wordsFoundSample,
+          }
+        );
+
+        continue;
+      }
+
+      // Wenn bis hier ok: "Language passed"
+      job.progress.passedLanguage++;
 
       // Wenn Regeln bestanden: in neue Collection schreiben
       if (!dryRun) {
@@ -1285,18 +1414,29 @@ async function runJobVorgefiltertToCode(jobId) {
 
           extractedAt: doc.extractedAt,
 
+          // ✅ super wichtig: damit du im UI/DB nachvollziehen kannst, warum drin
           codeCheck: {
             checkedAt: new Date(),
             passedRules: [
               "country=Deutschland",
-              `deutschArray>=${minDistinctGermanWords}`,
+              `nonGermanDistinctPerField<=${maxBadCharsDistinctPerField}`,
+              `deutschWordsDistinctTotal>=${minDistinctGermanWordsTotal}`,
             ],
             failedReason: "",
-            germanHits: langRes.hitsCount,
-            germanWordsFound: langRes.hitsWords,
-            // ✅ Neu: BadChar-Auswertung speichern (super fürs Debuggen)
-            badCharHits: badRes.hitsCount,
-            badCharsFound: badRes.foundCharsDistinct,
+
+            // Report NON_GERMAN_UNICODE_CHARS:
+            // wo/welche Zeichen gefunden wurden (auch wenn ok)
+            nonGermanCheck: {
+              maxDistinctPerField: nonGermanRes.maxDistinctPerField,
+              matches: nonGermanRes.matches,
+            },
+
+            // Report deutsche Wörter:
+            germanCheck: {
+              minDistinct: germanRes.minDistinct,
+              hitsDistinct: germanRes.hitsDistinct,
+              wordsFoundSample: germanRes.wordsFoundSample,
+            },
           },
         };
 
@@ -1309,7 +1449,7 @@ async function runJobVorgefiltertToCode(jobId) {
 
       job.progress.saved++;
 
-      // Nicht zu oft spammen: alle 25 docs einen Snapshot
+      // Snapshot sparsam: alle 25 docs
       if (job.progress.scanned % 25 === 0) {
         emitSnapshot(jobId, {
           step: `Scanne & filtere (${job.progress.scanned}/${totalPlanned})`,
