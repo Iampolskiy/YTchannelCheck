@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Collections</title>
+
+    <!--
+      Deine Styles:
+      - styles.css: allgemeine UI (Buttons, Layout, Cards)
+      - collections.css: spezifisch für diese Seite
+    -->
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/collections.css" />
+
+    <style>
+      /*
+        Mini-Styles für Details-Block.
+        Du kannst das auch in collections.css auslagern,
+        aber hier ist es "self contained" und geht sicher sofort.
+      */
+      .detailsRow td {
+        padding: 16px;
+      }
+      .detailsBox {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .detailsGrid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .detailsGrid .full {
+        grid-column: 1 / -1;
+      }
+      .videoList {
+        margin: 8px 0 0 18px;
+      }
+      .videoMeta {
+        font-size: 12px;
+        opacity: 0.75;
+        margin-left: 6px;
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+      }
+      .btnDetails {
+        min-width: 42px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- =========================================================
+         TOPBAR
+         ========================================================= -->
+    <header class="topbar">
+      <div class="container topbar__inner">
+        <div class="brand">
+          <div class="brand__logo">DB</div>
+          <div class="brand__text">
+            <div class="brand__title">Collections</div>
+            <div class="brand__subtitle">
+              ungeprueft / vorgefiltert / positiv / negativ
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar__right">
+          <a class="btn btn--ghost" href="/">← Zurück</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- =========================================================
+         LAYOUT: Sidebar links, Content rechts
+         ========================================================= -->
+    <main class="container layout">
+      <!-- =======================================================
+           SIDEBAR: Collections Liste
+           ======================================================= -->
+      <aside class="sidebar card">
+        <div class="sidebar__head">
+          <h2>Collections</h2>
+          <button id="btnRefresh" class="btn btn--ghost" title="Neu laden">
+            ↻
+          </button>
+        </div>
+
+        <div id="collectionList" class="collectionList"></div>
+
+        <div class="divider"></div>
+
+        <p class="muted small">
+          Tipp: Klick links eine Collection an. Rechts siehst du die Daten.
+          <br />
+          Details (Description + Videos) werden erst beim Klick auf ▶ geladen.
+        </p>
+      </aside>
+
+      <!-- =======================================================
+           CONTENT: Tabelle + Suche + Pagination
+           ======================================================= -->
+      <section class="content card">
+        <div class="content__head">
+          <div>
+            <h2 id="title">—</h2>
+            <div id="subtitle" class="muted small">—</div>
+          </div>
+
+          <!-- Tools: Suche -->
+          <div class="tools">
+            <input
+              id="search"
+              class="input"
+              type="text"
+              placeholder="Suche nach youtubeId, URL, Title oder Handle…"
+            />
+            <button id="btnSearch" class="btn btn--primary">Suchen</button>
+            <button id="btnClear" class="btn btn--ghost">Reset</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Tabelle -->
+        <div class="tableWrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <!--
+                  Diese Spalten sind bewusst "kurz".
+                  Description + komplette Videos sind in den Details,
+                  damit die Liste schnell bleibt.
+                -->
+                <th>youtubeId</th>
+                <th>youtubeUrl</th>
+                <th>Title</th>
+                <th>Handle</th>
+                <th>Country</th>
+                <th>SubscriberText</th>
+                <th>ytAboutOk</th>
+                <th>ytVideosOk</th>
+                <th>Status</th>
+                <th>extractedAt</th>
+                <th>createdAt</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+
+            <!-- tbody wird per JS gefüllt -->
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          <button id="btnPrev" class="btn btn--ghost">← Vorherige</button>
+          <div id="pageInfo" class="muted"></div>
+          <button id="btnNext" class="btn btn--ghost">Nächste →</button>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      /**
+       * Kleine Helper: kürzerer Zugriff auf DOM Elemente.
+       */
+      const $ = (id) => document.getElementById(id);
+
+      /**
+       * UI-State:
+       * - current: aktuelle Collection (bei dir erstmal nur "vorgefiltert")
+       * - limit/skip: Pagination
+       * - q: Suchstring
+       */
+      const state = {
+        current: null,
+        limit: 100,
+        skip: 0,
+        total: 0,
+        q: "",
+      };
+
+      /**
+       * escapeHtml:
+       * Schutz gegen "kaputtes HTML" und XSS.
+       * Alles, was aus der DB kommt, wird damit entschärft.
+       */
+      function escapeHtml(str) {
+        return String(str ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      /**
+       * fmtDate:
+       * Datum hübsch darstellen.
+       */
+      function fmtDate(d) {
+        if (!d) return "";
+        const dt = new Date(d);
+        if (Number.isNaN(dt.getTime())) return "";
+        return dt.toLocaleString("de-DE");
+      }
+
+      /**
+       * renderBoolChip:
+       * hübsche Anzeige für true/false/null
+       */
+      function renderBoolChip(v) {
+        if (v === true) return `<span class="chip chip--ok">OK</span>`;
+        if (v === false) return `<span class="chip chip--danger">FAIL</span>`;
+        return `<span class="chip chip--soft">—</span>`;
+      }
+
+      /**
+       * loadCollections:
+       * - ruft /api/collections ab
+       * - rendert links Buttons
+       * - setzt state.current auf die erste vorhandene Collection
+       */
+      async function loadCollections() {
+        const res = await fetch("/api/collections");
+        const data = await res.json();
+        if (!data.ok)
+          throw new Error(data.error || "Fehler bei /api/collections");
+
+        const counts = data.collections || {};
+        const names = Object.keys(counts);
+
+        // Wenn current noch leer ist oder ungültig -> erste Collection nehmen
+        if (!state.current || !counts[state.current]) {
+          state.current = names[0] || "vorgefiltert";
+        }
+
+        const list = $("collectionList");
+        list.innerHTML = "";
+
+        // Buttons bauen
+        for (const [name, count] of Object.entries(counts)) {
+          const active = name === state.current ? "collectionItem--active" : "";
+          const btn = document.createElement("button");
+          btn.className = `collectionItem ${active}`;
+          btn.innerHTML = `
+            <span class="collectionItem__name">${escapeHtml(name)}</span>
+            <span class="badge">${escapeHtml(count)}</span>
+          `;
+          btn.addEventListener("click", async () => {
+            state.current = name;
+            state.skip = 0;
+            await loadCollections(); // Buttons neu rendern (active state)
+            await loadCollectionData(); // Daten neu laden
+          });
+          list.appendChild(btn);
+        }
+      }
+
+      /**
+       * loadCollectionData:
+       * - ruft /api/collection/:name ab
+       * - rendert Tabelle
+       *
+       * WICHTIG:
+       * Diese Liste ist "leicht" (keine Videos).
+       * Videos + description kommen später per Details-Klick.
+       */
+      async function loadCollectionData() {
+        $("title").textContent = state.current || "—";
+        $("subtitle").textContent = "Lade Daten…";
+        $("tbody").innerHTML = "";
+
+        const url = new URL(
+          `/api/collection/${state.current}`,
+          window.location.origin
+        );
+        url.searchParams.set("limit", state.limit);
+        url.searchParams.set("skip", state.skip);
+        if (state.q) url.searchParams.set("q", state.q);
+
+        const res = await fetch(url.toString());
+        const data = await res.json();
+
+        if (!data.ok) {
+          $("subtitle").textContent = "Fehler: " + (data.error || "unbekannt");
+          return;
+        }
+
+        state.total = data.total || 0;
+
+        $("subtitle").textContent =
+          `${state.total.toLocaleString("de-DE")} Datensätze` +
+          (state.q ? ` (Filter: "${state.q}")` : "");
+
+        const rows = data.items || [];
+        const tbody = $("tbody");
+
+        if (rows.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="12" class="muted">Keine Ergebnisse.</td></tr>`;
+        } else {
+          tbody.innerHTML = rows
+            .map((r) => {
+              // channelInfo kommt aus Mongo und ist ein Objekt:
+              // r.channelInfo.title, r.channelInfo.handle, ...
+              const title = r.channelInfo?.title ?? "";
+              const handle = r.channelInfo?.handle ?? "";
+              const country = r.channelInfo?.country ?? "";
+              const subsText = r.channelInfo?.subscriberCountText ?? "";
+
+              return `
+                <tr>
+                  <td class="mono"><code>${escapeHtml(r.youtubeId)}</code></td>
+
+                  <td class="urlCell">
+                    <a href="${escapeHtml(
+                      r.youtubeUrl
+                    )}" target="_blank" rel="noreferrer">
+                      ${escapeHtml(r.youtubeUrl)}
+                    </a>
+                  </td>
+
+                  <td>${escapeHtml(title)}</td>
+                  <td>${escapeHtml(handle)}</td>
+                  <td>${escapeHtml(country)}</td>
+                  <td>${escapeHtml(subsText)}</td>
+
+                  <td>${renderBoolChip(r.ytAboutOk)}</td>
+                  <td>${renderBoolChip(r.ytVideosOk)}</td>
+                  <td>${escapeHtml(r.status ?? "")}</td>
+
+                  <td>${escapeHtml(fmtDate(r.extractedAt))}</td>
+                  <td>${escapeHtml(fmtDate(r.createdAt))}</td>
+
+                  <!-- Details Button: lädt Videos + Description nach -->
+                  <td>
+                    <button
+                      class="btn btn--ghost btnDetails"
+                      data-youtubeid="${escapeHtml(r.youtubeId)}"
+                      title="Details (Description + Videos)"
+                    >
+                      ▶
+                    </button>
+                  </td>
+                </tr>
+              `;
+            })
+            .join("");
+        }
+
+        // Pagination Anzeige
+        const from = state.total === 0 ? 0 : state.skip + 1;
+        const to = Math.min(state.skip + state.limit, state.total);
+        $("pageInfo").textContent =
+          state.total === 0
+            ? "0"
+            : `${from.toLocaleString("de-DE")}–${to.toLocaleString(
+                "de-DE"
+              )} von ${state.total.toLocaleString("de-DE")}`;
+
+        $("btnPrev").disabled = state.skip <= 0;
+        $("btnNext").disabled = state.skip + state.limit >= state.total;
+      }
+
+      /**
+       * DETAILS-CLICK HANDLER (Event Delegation)
+       * ---------------------------------------
+       * Wir hängen EINEN Listener an tbody.
+       * Wenn irgendwo ein .btnDetails geklickt wird, reagieren wir.
+       *
+       * Vorteil:
+       * - wir müssen nicht pro Zeile extra Listener registrieren
+       * - es funktioniert auch nach "neu rendern"
+       */
+      $("tbody").addEventListener("click", async (e) => {
+        const btn = e.target.closest(".btnDetails");
+        if (!btn) return;
+
+        const youtubeId = btn.getAttribute("data-youtubeid");
+        if (!youtubeId) return;
+
+        const tr = btn.closest("tr");
+        const next = tr?.nextElementSibling;
+
+        // Toggle: Wenn Details schon offen -> schließen
+        if (next && next.classList.contains("detailsRow")) {
+          next.remove();
+          btn.textContent = "▶";
+          return;
+        }
+
+        // Loading Anzeige
+        btn.textContent = "…";
+
+        // Details API aufrufen:
+        // GET /api/collection/vorgefiltert/item/:youtubeId
+        const detailsUrl = `/api/collection/${encodeURIComponent(
+          state.current
+        )}/item/${encodeURIComponent(youtubeId)}`;
+        const res = await fetch(detailsUrl);
+        const data = await res.json();
+
+        if (!data.ok) {
+          btn.textContent = "▶";
+          alert("Fehler: " + (data.error || "unbekannt"));
+          return;
+        }
+
+        const item = data.item || {};
+        const ci = item.channelInfo || {};
+        const videos = Array.isArray(item.videos) ? item.videos : [];
+
+        // Description soll in Details -> genau hier
+        const description = String(ci.description ?? "").trim();
+
+        // Videos rendern:
+        // Dein Schema nutzt: { id, title, url, publishedText, viewsText, durationText, description }
+        const videoLis = videos
+          .map((v) => {
+            const title = v?.title ?? v?.name ?? v?.id ?? "Video";
+            const url =
+              v?.url ??
+              (v?.id ? `https://www.youtube.com/watch?v=${v.id}` : "");
+            const views = v?.viewsText ?? "";
+            const dur = v?.durationText ?? "";
+            const pub = v?.publishedText ?? "";
+
+            const metaParts = [pub, views, dur].filter(Boolean);
+            const meta = metaParts.length
+              ? ` <span class="videoMeta">(${escapeHtml(
+                  metaParts.join(" • ")
+                )})</span>`
+              : "";
+
+            if (url) {
+              return `<li><a href="${escapeHtml(
+                url
+              )}" target="_blank" rel="noreferrer">${escapeHtml(
+                title
+              )}</a>${meta}</li>`;
+            }
+            return `<li>${escapeHtml(title)}${meta}</li>`;
+          })
+          .join("");
+
+        // Details-Zeile bauen
+        // colspan muss genau zur Spaltenzahl passen: wir haben 12 Spalten
+        const detailsTr = document.createElement("tr");
+        detailsTr.className = "detailsRow";
+        detailsTr.innerHTML = `
+          <td colspan="12">
+            <div class="detailsBox">
+              <div class="detailsGrid">
+                <div><strong>Title:</strong> ${escapeHtml(ci.title ?? "")}</div>
+                <div><strong>Handle:</strong> ${escapeHtml(
+                  ci.handle ?? ""
+                )}</div>
+
+                <div><strong>Country:</strong> ${escapeHtml(
+                  ci.country ?? ""
+                )}</div>
+                <div><strong>SubscriberText:</strong> ${escapeHtml(
+                  ci.subscriberCountText ?? ""
+                )}</div>
+
+                <div class="full"><strong>Channel URL:</strong>
+                  ${
+                    ci.url
+                      ? `<a href="${escapeHtml(
+                          ci.url
+                        )}" target="_blank" rel="noreferrer">${escapeHtml(
+                          ci.url
+                        )}</a>`
+                      : `<span class="muted">—</span>`
+                  }
+                </div>
+
+                <div class="full"><strong>Description:</strong><br />
+                  ${
+                    description
+                      ? `<div style="white-space: pre-wrap; margin-top: 6px;">${escapeHtml(
+                          description
+                        )}</div>`
+                      : `<span class="muted">—</span>`
+                  }
+                </div>
+
+                <div class="full"><strong>Videos:</strong> ${
+                  videos.length
+                }</div>
+                <div class="full">
+                  ${
+                    videos.length
+                      ? `<ol class="videoList">${videoLis}</ol>`
+                      : `<div class="muted">Keine Videos gespeichert.</div>`
+                  }
+                </div>
+              </div>
+            </div>
+          </td>
+        `;
+
+        // Einfügen direkt nach der Zeile
+        tr.after(detailsTr);
+
+        // Button Zustand "offen"
+        btn.textContent = "▼";
+      });
+
+      // Pagination Buttons
+      $("btnPrev").addEventListener("click", async () => {
+        state.skip = Math.max(0, state.skip - state.limit);
+        await loadCollectionData();
+      });
+
+      $("btnNext").addEventListener("click", async () => {
+        state.skip = state.skip + state.limit;
+        await loadCollectionData();
+      });
+
+      // Suche
+      $("btnSearch").addEventListener("click", async () => {
+        state.q = $("search").value.trim();
+        state.skip = 0;
+        await loadCollectionData();
+      });
+
+      $("search").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("btnSearch").click();
+      });
+
+      // Reset
+      $("btnClear").addEventListener("click", async () => {
+        $("search").value = "";
+        state.q = "";
+        state.skip = 0;
+        await loadCollectionData();
+      });
+
+      // Refresh
+      $("btnRefresh").addEventListener("click", async () => {
+        await loadCollections();
+        await loadCollectionData();
+      });
+
+      /**
+       * INIT:
+       * - Collections laden
+       * - danach Daten laden
+       */
+      (async () => {
+        try {
+          await loadCollections();
+          await loadCollectionData();
+        } catch (e) {
+          $("subtitle").textContent = "Fehler: " + (e?.message || String(e));
+        }
+      })();
+    </script>
+  </body>
+</html>

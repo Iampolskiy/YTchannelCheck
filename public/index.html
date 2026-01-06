@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube Channel Check</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div class="container topbar__inner">
+        <div class="brand">
+          <div class="brand__text">
+            <div class="brand__title">YouTubeChannelCheck</div>
+            <div class="brand__subtitle">SocialBlade HTML → MongoDB</div>
+          </div>
+        </div>
+
+        <div class="topbar__right">
+          <a href="/collections" class="btn">Collections ansehen</a>
+          <span class="pill">Server: <b>http://localhost:3000</b></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <h1>Import & Prüfung von YouTube-Kanälen</h1>
+        <p>
+          Du lädst SocialBlade-HTML-Dateien hoch. Danach startet Prozess 1:
+          Kanäle werden extrahiert und (wenn neu) in die Collection
+          <b>vorgefiltert</b> gespeichert.
+        </p>
+      </section>
+
+      <section class="grid">
+        <!-- OPTION 1 -->
+        <div class="card">
+          <div class="card__head">
+            <h2>Upload Option 1 (SocialBlade)</h2>
+            <span class="tag tag--ok">Aktiv</span>
+          </div>
+
+          <p class="muted">
+            Lade SocialBlade <b>.html</b> Dateien hoch. <br />Sie werden in den
+            Ordner <code>/input</code> gespeichert.
+          </p>
+
+          <div class="row">
+            <label class="btn btn--ghost">
+              Dateien auswählen
+              <input
+                id="filesOption1"
+                type="file"
+                multiple
+                accept=".html,.htm"
+                hidden
+              />
+            </label>
+
+            <button id="btnUpload1" class="btn btn--primary">Hochladen</button>
+          </div>
+
+          <div class="divider"></div>
+
+          <button id="btnProcessSbToDb" class="btn btn--success btn--wide">
+            Start Prozess 1 (HTML → vorgefiltert)
+          </button>
+
+          <div class="divider"></div>
+
+          <button
+            id="btnProcessVorgefiltertToCode"
+            class="btn btn--success btn--wide"
+            title="Filtert deutsche Kanäle nach Regeln und schreibt in vorgefiltertCode"
+          >
+            Start Prozess 2 (vorgefiltert → vorgefiltertCode)
+          </button>
+
+          <div class="hint">
+            Tipp: Erst hochladen, dann Prozess 1. Danach Prozess 2.
+          </div>
+        </div>
+
+        <!-- OPTION 2 -->
+        <div class="card card--disabled">
+          <div class="card__head">
+            <h2>Upload Option 2</h2>
+            <span class="tag">Später</span>
+          </div>
+          <p class="muted">Diese Option wird später ergänzt.</p>
+          <button class="btn btn--wide" disabled>Kommt bald</button>
+        </div>
+
+        <!-- OPTION 3 -->
+        <div class="card card--disabled">
+          <div class="card__head">
+            <h2>Upload Option 3</h2>
+            <span class="tag">Später</span>
+          </div>
+          <p class="muted">Diese Option wird später ergänzt.</p>
+          <button class="btn btn--wide" disabled>Kommt bald</button>
+        </div>
+
+        <!-- OPTION 4 -->
+        <div class="card card--disabled">
+          <div class="card__head">
+            <h2>Upload Option 4</h2>
+            <span class="tag">Später</span>
+          </div>
+          <p class="muted">Diese Option wird später ergänzt.</p>
+          <button class="btn btn--wide" disabled>Kommt bald</button>
+        </div>
+      </section>
+
+      <!-- STATUS + ERGEBNIS -->
+      <section class="panel">
+        <div class="panel__head">
+          <h3>Status & Ergebnis</h3>
+          <div class="panel__actions">
+            <button id="btnClear" class="btn btn--ghost">
+              Ausgabe löschen
+            </button>
+          </div>
+        </div>
+
+        <div id="status" class="status status--idle">
+          <div class="status__dot"></div>
+          <div>
+            <div class="status__title">Bereit</div>
+            <div class="status__text">
+              Wähle Dateien aus und starte den Upload.
+            </div>
+          </div>
+        </div>
+
+        <div id="output" class="output"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer__inner">
+        <span class="muted">© YouTubeChannelCheck</span>
+        <span class="muted"
+          >MongoDB Collections: vorgefiltert / vorgefiltertCode</span
+        >
+      </div>
+    </footer>
+
+    <script>
+      // -----------------------------
+      // Kleine UI-Helfer
+      // -----------------------------
+      const $ = (id) => document.getElementById(id);
+
+      function setStatus(type, title, text) {
+        const status = $("status");
+        status.className = "status status--" + type;
+        status.querySelector(".status__title").textContent = title;
+        status.querySelector(".status__text").textContent = text;
+      }
+
+      function escapeHtml(str) {
+        return String(str ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function renderJsonBox(title, obj) {
+        return `
+          <div class="box">
+            <div class="box__title">${escapeHtml(title)}</div>
+            <pre class="code">${escapeHtml(JSON.stringify(obj, null, 2))}</pre>
+          </div>
+        `;
+      }
+
+      // -----------------------------
+      // Upload Option 1
+      // -----------------------------
+      $("btnUpload1").addEventListener("click", async () => {
+        const input = $("filesOption1");
+        if (!input.files || input.files.length === 0) {
+          setStatus(
+            "warn",
+            "Keine Dateien ausgewählt",
+            "Bitte zuerst .html/.htm Dateien auswählen."
+          );
+          return;
+        }
+
+        setStatus(
+          "work",
+          "Upload läuft…",
+          `${input.files.length} Datei(en) werden hochgeladen.`
+        );
+
+        const form = new FormData();
+        for (const file of input.files) form.append("files", file);
+
+        try {
+          const res = await fetch("/upload/option1", {
+            method: "POST",
+            body: form,
+          });
+          const data = await res.json();
+
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || "Upload fehlgeschlagen");
+          }
+
+          setStatus(
+            "ok",
+            "Upload fertig ✅",
+            `${data.savedCount} Datei(en) in /input gespeichert.`
+          );
+          $("output").innerHTML =
+            renderJsonBox("Upload Ergebnis", data) + $("output").innerHTML;
+        } catch (e) {
+          setStatus("err", "Upload Fehler ❌", e.message);
+        }
+      });
+
+      // -----------------------------
+      // Job Starter (wiederverwendbar)
+      // -----------------------------
+      async function startJob(endpoint, bodyObj) {
+        setStatus(
+          "work",
+          "Prozess läuft…",
+          "Job wird gestartet… (Live-Logs folgen)"
+        );
+
+        // Live-Log Box oben einfügen
+        const logBoxId = "liveLogBox";
+        const liveBoxHtml = `
+          <div class="box" id="${logBoxId}">
+            <div class="box__title">Live Status (Job)</div>
+            <div class="box__body">
+              <div class="muted small" id="jobMeta">Job: —</div>
+              <div class="muted small" id="jobStep">Step: —</div>
+              <div class="muted small" id="jobProgress">Progress: —</div>
+              <div class="divider"></div>
+              <pre class="code" id="jobLogs" style="max-height:320px; overflow:auto;"></pre>
+            </div>
+          </div>
+        `;
+        $("output").innerHTML = liveBoxHtml + $("output").innerHTML;
+
+        const jobMetaEl = document.getElementById("jobMeta");
+        const jobStepEl = document.getElementById("jobStep");
+        const jobProgressEl = document.getElementById("jobProgress");
+        const jobLogsEl = document.getElementById("jobLogs");
+
+        function appendLog(line) {
+          jobLogsEl.textContent += line + "\n";
+          jobLogsEl.scrollTop = jobLogsEl.scrollHeight;
+        }
+
+        let es = null;
+
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bodyObj || {}),
+          });
+
+          const startData = await res.json();
+          if (!res.ok || !startData.ok) {
+            throw new Error(startData.error || "Job-Start fehlgeschlagen");
+          }
+
+          const jobId = startData.jobId;
+          jobMetaEl.textContent = `Job: ${jobId}`;
+          appendLog(`[client] Job gestartet: ${jobId}`);
+
+          es = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/stream`);
+
+          es.addEventListener("snapshot", (ev) => {
+            const snap = JSON.parse(ev.data);
+
+            jobStepEl.textContent = `Step: ${snap.step || "—"}`;
+            const cur = snap.progress?.current ?? 0;
+            const total = snap.progress?.total ?? 0;
+            jobProgressEl.textContent = total
+              ? `Progress: ${cur}/${total}`
+              : "Progress: —";
+
+            if (snap.status === "done") {
+              setStatus("ok", "Prozess fertig ✅", "Job abgeschlossen.");
+              appendLog("[server] Job DONE ✅");
+
+              if (snap.stats) {
+                $("output").innerHTML =
+                  renderJsonBox("Job Ergebnis (Stats)", snap.stats) +
+                  $("output").innerHTML;
+              }
+
+              es.close();
+            }
+
+            if (snap.status === "error") {
+              setStatus(
+                "err",
+                "Prozess Fehler ❌",
+                snap.error || "Unbekannter Fehler"
+              );
+              appendLog(`[server] Job ERROR ❌: ${snap.error || "unbekannt"}`);
+              es.close();
+            }
+          });
+
+          es.addEventListener("log", (ev) => {
+            const l = JSON.parse(ev.data);
+            const prefix =
+              l.level === "err" ? "❌" : l.level === "warn" ? "⚠️" : "ℹ️";
+            appendLog(
+              `${prefix} ${l.t} — ${l.message}${
+                l.extra ? " " + JSON.stringify(l.extra) : ""
+              }`
+            );
+          });
+
+          es.addEventListener("ping", () => {});
+          es.onerror = () =>
+            appendLog("[client] SSE Verbindung unterbrochen (onerror).");
+        } catch (e) {
+          setStatus("err", "Prozess Fehler ❌", e.message);
+          appendLog(`[client] ERROR: ${e.message}`);
+          if (es) es.close();
+        }
+      }
+
+      // -----------------------------
+      // Prozess 1
+      // -----------------------------
+      $("btnProcessSbToDb").addEventListener("click", async () => {
+        await startJob("/process/sb-html-to-db", {});
+      });
+
+      // -----------------------------
+      // Prozess 2 (mit Beispiel-Optionen)
+      // -----------------------------
+      $("btnProcessVorgefiltertToCode").addEventListener("click", async () => {
+        await startJob("/process/vorgefiltert-to-vorgefiltertCode", {
+          minDistinctGermanWords: 5,
+          dryRun: false,
+          limit: 0,
+          // deutschArray: [...] // optional überschreiben
+        });
+      });
+
+      // -----------------------------
+      // Ausgabe löschen
+      // -----------------------------
+      $("btnClear").addEventListener("click", () => {
+        $("output").innerHTML = "";
+        setStatus("idle", "Bereit", "Wähle Dateien aus und starte den Upload.");
+      });
+    </script>
+  </body>
+</html>

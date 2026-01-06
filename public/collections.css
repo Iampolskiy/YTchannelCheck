@@ -1,0 +1,176 @@
+/* Layout: Sidebar links, Content rechts */
+.layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 14px;
+  margin-top: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 950px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Sidebar */
+.sidebar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.collectionList {
+  display: grid;
+  gap: 10px;
+}
+
+.collectionItem {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding: 12px;
+  border-radius: 12px;
+
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e9eefc;
+
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+
+.collectionItem:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.collectionItem:active {
+  transform: translateY(1px);
+}
+
+.collectionItem--active {
+  border-color: rgba(49, 212, 255, 0.55);
+  background: rgba(49, 212, 255, 0.12);
+}
+
+.collectionItem__name {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  text-transform: lowercase;
+}
+
+/* Content header */
+.content__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tools {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.input {
+  min-width: 260px;
+  padding: 10px 12px;
+  border-radius: 12px;
+
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: #e9eefc;
+  outline: none;
+}
+
+.input:focus {
+  border-color: rgba(49,212,255,0.55);
+}
+
+/* Table */
+.tableWrap {
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.18);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  /* mehr Platz, weil zusätzliche Spalten (EnrichOk/Error/FetchedAt) */
+  min-width: 1300px;
+}
+
+.table thead th {
+  text-align: left;
+  font-size: 0.9rem;
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  position: sticky;
+  top: 0;
+}
+
+.table tbody td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  vertical-align: top;
+  font-size: 0.95rem;
+}
+
+.table tbody tr:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.urlCell a {
+  color: #9be7ff;
+  text-decoration: none;
+}
+
+.urlCell a:hover {
+  text-decoration: underline;
+}
+
+/* NEU: Error-Zelle sauber umbrechen */
+.errorCell {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 520px;
+}
+
+.errorDetails {
+  max-width: 520px;
+}
+.errorDetails__summary {
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.82);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.errorDetails__summary:hover {
+  text-decoration: underline;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
