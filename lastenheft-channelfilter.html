@@ -1,0 +1,327 @@
+<article>
+	<h1>Grundlagen, Zielsetzung, Kontext und Randbedingungen</h1>
+
+	<section>
+		<h2>Abgrenzung und Einsatzrahmen (intern, lokal)</h2>
+		<p>Die Software wird intern verwendet und lokal auf einem einzelnen Rechner ausgeführt. Eine hohe Usability, ausgefeilte UX oder umfangreiche Komfortfunktionen sind nicht erforderlich; die Benutzeroberfläche soll bewusst simpel gehalten werden, um den Entwicklungsaufwand gering zu halten.</p>
+		<p>Die Anwendung ist als Node.js Applikation konzipiert und nutzt eine Datenbank. Ein KI-Modell wird nicht innerhalb der Node.js Anwendung betrieben, sondern über eine externe Schnittstelle angesprochen. Aktuell ist vorgesehen, die KI selbst gehostet über OLAMA lokal auf einem Rechner zu betreiben; in der Zukunft kann sich dies ändern und es können für einzelne Teilaufgaben bzw. Prompts unterschiedliche Modelle verwendet werden.</p>
+		<p>Das System bezieht Kanäle aus öffentlichen Quellen (Social Blade) sowie aus eigenen Google-Ads/YouTube-Kampagnen (Import) und führt diese in einer Datenbank zusammen, um sie in einer mehrstufigen Filterkette zu bewerten und anschließend als Negativliste für Google Ads zu exportieren.</p>
+	</section>
+
+	<section>
+		<h2>Nicht-funktionale Randbedingungen (kein Auth, kein Logging, kein Deployment, sequenziell)</h2>
+		<p>Es gibt keine Authentifizierung, keine Benutzerrollen und keine Rechteverwaltung. Die Software läuft lokal ohne Deployment-Konzept und ohne serverseitige Bereitstellung; sie wird direkt auf demselben Rechner ausgeführt, auf dem auch der Browser für Social Blade genutzt wird.</p>
+		<p>Es ist kein Logging vorgesehen, weder technisches Logging noch fachliches Logging. Fehlerfälle im Social-Blade-Import werden durch Überspringen behandelt; das System soll in solchen Fällen fortfahren, statt abzubrechen.</p>
+		<p>Es gibt keine definierten Limitierungen hinsichtlich Performance, Durchsatz oder KI-Kosten. Zu prüfende Kanäle werden nacheinander verarbeitet. Bei der KI-Überprüfung werden mehrere Prompts seriell angewendet; bei einer ungültigen KI-Antwort wird der betroffene Kanal übersprungen, ohne dass eine Statusänderung erzwungen wird.</p>
+	</section>
+	
+		<section>
+		<h2>Abgrenzung und Einsatzrahmen (intern, lokal)</h2>
+		<p>Die Software wird intern verwendet und lokal auf einem einzelnen Rechner ausgeführt. Eine hohe Usability, ausgefeilte UX oder umfangreiche Komfortfunktionen sind nicht erforderlich; die Benutzeroberfläche soll bewusst simpel gehalten werden, um den Entwicklungsaufwand gering zu halten.</p>
+		<p>Die Anwendung ist als Node.js Applikation konzipiert und nutzt eine Datenbank. Ein KI-Modell wird nicht innerhalb der Node.js Anwendung betrieben, sondern über eine externe Schnittstelle angesprochen. Aktuell ist vorgesehen, die KI selbst gehostet über OLAMA lokal auf einem Rechner zu betreiben; in der Zukunft kann sich dies ändern und es können für einzelne Teilaufgaben bzw. Prompts unterschiedliche Modelle verwendet werden.</p>
+		<p>Das System bezieht Kanäle aus öffentlichen Quellen (Social Blade) sowie aus eigenen Google-Ads/YouTube-Kampagnen (Import) und führt diese in einer Datenbank zusammen, um sie in einer mehrstufigen Filterkette zu bewerten und anschließend als Negativliste für Google Ads zu exportieren.</p>
+	</section>
+
+	<section>
+		<h2>Nicht-funktionale Randbedingungen (kein Auth, kein Logging, kein Deployment, sequenziell)</h2>
+		<p>Es gibt keine Authentifizierung, keine Benutzerrollen und keine Rechteverwaltung. Die Software läuft lokal ohne Deployment-Konzept und ohne serverseitige Bereitstellung; sie wird direkt auf demselben Rechner ausgeführt, auf dem auch der Browser für Social Blade genutzt wird.</p>
+		<p>Es ist kein Logging vorgesehen, weder technisches Logging noch fachliches Logging. Fehlerfälle im Social-Blade-Import werden durch Überspringen behandelt; das System soll in solchen Fällen fortfahren, statt abzubrechen.</p>
+		<p>Es gibt keine definierten Limitierungen hinsichtlich Performance, Durchsatz oder KI-Kosten. Zu prüfende Kanäle werden nacheinander verarbeitet. Bei der KI-Überprüfung werden mehrere Prompts seriell angewendet; bei einer ungültigen KI-Antwort wird der betroffene Kanal übersprungen, ohne dass eine Statusänderung erzwungen wird.</p>
+	</section>
+</article>
+
+
+<article>
+	<h1>Begriffe, Architektur und Datenmodell</h1>
+
+	<section>
+		<h2>Begriffe und Definitionen</h2>
+		<p>Ein Kanal bezeichnet einen YouTube-Kanal, der über Social Blade, Google Ads oder Video-Links in das System importiert wird. Ein Video bezeichnet ein einzelnes YouTube-Video, dessen URL zur Ermittlung des zugehörigen Kanals verwendet werden kann.</p>
+		<p>Eine Quelle beschreibt den Ursprung eines Kanals im System. Ein Kanal kann mehrere Quellen besitzen. Zu den Quellen zählen Social Blade sowie eine oder mehrere Kampagnen aus Google Ads. Kampagnen sind logisch gruppierte Importquellen, die vor dem Import angelegt werden und nach Importtyp getrennt verwaltet werden.</p>
+		<p>Der Status eines Kanals beschreibt den aktuellen Prüfzustand und kann ungeprüft, vorgefiltert, negativ oder positiv sein. Zusätzlich wird für negative oder positive Kanäle die Entscheidungsstufe gespeichert, die angibt, ob die Einstufung durch Vorfilterung, durch künstliche Intelligenz oder manuell erfolgt ist.</p>
+	</section>
+
+	<section>
+		<h2>Statusmodell und Entscheidungsstufe</h2>
+		<p>Jeder Kanal besitzt genau einen Status. Neue Kanäle werden initial mit dem Status ungeprüft angelegt. Nach erfolgreicher Vorfilterung erhalten Kanäle den Status vorgefiltert. Kanäle, die in der Vorfilterung oder in der KI-Filterung durchfallen, erhalten den Status negativ. Kanäle, die alle Filterstufen erfolgreich durchlaufen, erhalten den Status positiv.</p>
+		<p>Zusätzlich zum Status wird bei positiven und negativen Kanälen die Entscheidungsstufe gespeichert. Diese gibt an, ob die Entscheidung durch Vorfilterung, durch KI oder manuell getroffen wurde. Bei manuellen Entscheidungen wird diese Kennzeichnung dauerhaft gespeichert und nicht automatisch durch weitere Filter überschrieben.</p>
+		<p>Es ist möglich, Kanäle manuell oder massenhaft wieder auf den Status ungeprüft zu setzen, um sie erneut durch die Filterketten laufen zu lassen. Die Entscheidung, welche Kanäle zurückgesetzt werden, erfolgt durch vorherige Filterung in den Listenansichten.</p>
+	</section>
+
+	<section>
+		<h2>Systemarchitektur</h2>
+		<p>Die Anwendung ist als lokale Node.js Applikation umgesetzt und wird ohne serverseitiges Deployment auf einem einzelnen Rechner betrieben. Als Datenbank wird MongoDB verwendet, die lokal oder im internen Netzwerk betrieben wird.</p>
+		<p>Die Filterung durch künstliche Intelligenz erfolgt über eine externe Schnittstelle. Das KI-Modell ist nicht Teil der Node.js Anwendung, sondern wird aktuell selbst gehostet über OLAMA angesprochen. Die Architektur erlaubt es, künftig andere Modelle oder mehrere unterschiedliche Modelle für verschiedene Prompts zu verwenden.</p>
+	</section>
+
+	<section>
+		<h2>Datenhaltung und Schlüssel</h2>
+		<p>Der primäre Schlüssel für alle Kanäle ist die YouTube-Kanal-ID. Diese ID wird unabhängig von der Importquelle verwendet und dient zur eindeutigen Identifikation und Duplikaterkennung.</p>
+		<p>Ein Kanal kann mehreren Quellen zugeordnet sein. Für Social Blade wird ein boolesches Flag gespeichert. Für Kampagnen wird eine Liste von Kampagnen-IDs gespeichert, die angibt, in welchen Importen oder Kampagnen der Kanal vorgekommen ist.</p>
+	</section>
+
+	<section>
+		<h2>Persistenz- und Aktualisierungsregeln</h2>
+		<p>Alle Statusänderungen erfolgen unmittelbar und werden sofort in der Datenbank gespeichert. Dies gilt für Vorfilterung, KI-Filterung und manuelle Entscheidungen, um Unterbrechungen oder Abbrüche ohne Datenverlust zu ermöglichen.</p>
+		<p>Bei erneutem Import eines bereits bekannten Kanals wird dieser anhand der YouTube-Kanal-ID erkannt. Der Kanal wird nicht neu angelegt, jedoch werden fehlende Quellen- oder Kampagnenzuordnungen ergänzt. Die Entscheidung, ob ein erneutes Scraping von YouTube erfolgt, ist unabhängig vom Status und Teil der Importlogik.</p>
+	</section>
+</article>
+
+
+
+<article>
+	<h1>Social Blade Extractor</h1>
+
+	<section>
+		<h2>Zweck und Ergebnis (Kanalliste gewinnen, Quelle markieren)</h2>
+		<p>Der Social Blade Extractor dient dazu, in sehr großem Umfang YouTube-Kanäle aus Social Blade zu gewinnen und als neue, ungeprüfte Kanäle im System abzulegen. Social Blade listet weltweit bekannte YouTube-Kanäle; es werden bewusst auch Top-Kanäle aus anderen Ländern berücksichtigt, da in Deutschland auch Touristen sowie Personen, die kürzlich nach Deutschland gekommen sind, Inhalte in anderen Sprachen konsumieren und diese Kanäle somit für die Ausspielung in Deutschland relevant sein können.</p>
+		<p>Das Modul legt pro neu gefundenem Kanal die Social-Blade-Bezeichnung, die YouTube-Bezeichnung und die YouTube-Kanal-ID ab und markiert den Kanal zusätzlich mit einem Social-Blade-Flag (boolean). Ein Kanal kann gleichzeitig auch aus Kampagnen stammen; die Quellenlogik ist daher grundsätzlich mehrwertig, Social Blade wird als zusätzliche Quelle mit True hinterlegt.</p>
+		<p>Die Duplikaterkennung erfolgt ausschließlich über die YouTube-Kanal-ID als Primärschlüssel. Existiert ein Kanal mit dieser YouTube-Kanal-ID bereits in der Datenbank, wird er im Social-Blade-Prozess nicht erneut angelegt.</p>
+	</section>
+
+	<section>
+		<h2>Generierung der Social-Blade-Listen-URLs (Filterkombinationen)</h2>
+		<p>Social Blade stellt Kanallisten nicht als Gesamtdownload bereit, sondern über filterbare Listenansichten. Die Kanäle können über verschiedene Filterkombinationen abgerufen werden, z. B. nach Land, Kinder/Nicht-Kinder, Thema sowie nach Rankings oder Sortierungen (z. B. Top/Bottom, Views, Follower). Durch die Kombination dieser Filter entstehen sehr große Datenmengen bis in den Millionenbereich.</p>
+		<p>Im Quellcode werden alle verfügbaren Social-Blade-Filtermöglichkeiten über verschachtelte For-Each-Schleifen kombiniert. Das Ergebnis dieser Kombination ist eine Liste von Social-Blade-URLs, wobei jede URL eine konkrete Listenansicht repräsentiert, aus der zwischen 0 und 1000 Kanäle extrahiert werden können.</p>
+	</section>
+
+	<section>
+		<h2>Browser-Downloadprozess (Chrome Login, DOM-Download, Download-Ordner, Cleanup)</h2>
+		<p>Die Social-Blade-Listenansichten werden nicht direkt per Node.js HTTP-Request verarbeitet, da Schutzmechanismen sonst zu Blockierungen führen und ohne Login nur reduzierte Ergebnislisten verfügbar sind. Daher wird der normale Standardbrowser des Systems (Chrome) verwendet und die Social-Blade-Seiten werden in einem echten, eingeloggten Browser-Kontext geöffnet.</p>
+		<p>Node.js startet Chrome und verwendet ein Skript mit einem Plugin, das beim Document-Ready-Ereignis den vollständigen DOM-Inhalt der aufgebauten Seite herunterlädt. Der Download wird im normalen Download-Ordner des Systems abgelegt. Node.js liest die heruntergeladene Datei anschließend automatisch ein und löscht sie wieder, sodass keine dauerhaften Download-Artefakte verbleiben.</p>
+	</section>
+
+	<section>
+		<h2>Extraktion und Duplikatlogik (Listen → Kanäle; Detailseite; Skip bei existierender Channel-ID)</h2>
+		<p>Nach dem Einlesen des DOM der Listenansicht werden daraus alle gelisteten Kanäle extrahiert. Für jeden extrahierten Eintrag wird geprüft, ob in der Datenbank bereits ein Kanal mit dem entsprechenden Social-Blade-URL-Slug existiert; falls ja, wird dieser Eintrag übersprungen. Falls nein, wird im nächsten Schritt die Social-Blade-Detailseite des einzelnen Kanals geladen.</p>
+		<p>Die Social-Blade-Detailseite eines einzelnen Kanals wird ohne eingeloggten Browser direkt per Node.js geladen, da hierfür kein Login und keine JavaScript-Engine erforderlich ist. Aus der Detailseite werden die Social-Blade-Bezeichnung, die YouTube-Bezeichnung sowie die YouTube-Kanal-ID entnommen.</p>
+		<p>Die YouTube-Kanal-ID ist der primäre Schlüssel im System. Bei der Speicherung wird anhand der YouTube-Kanal-ID geprüft, ob der Kanal bereits existiert. Wenn der Kanal existiert, wird er nicht neu angelegt; wenn er nicht existiert, wird er als neuer Kanal weiterverarbeitet und anschließend im Status ungeprüft abgelegt, wobei das Social-Blade-Flag auf True gesetzt wird.</p>
+		<p>Nach dem Social-Blade-Schritt wird der Kanal nicht nur als Datensatz abgelegt, sondern es wird unmittelbar das YouTube-Modul (YouTube Downloader und YouTube Extractor) genutzt, um den Kanal von YouTube zu scrapen, alle verfügbaren Informationen zu extrahieren und erst danach den vollständigen Kanal als ungeprüft in der Datenbank zu speichern.</p>
+	</section>
+
+	<section>
+		<h2>Fehlerverhalten (überspringen und fortfahren)</h2>
+		<p>Tritt beim Social-Blade-Prozess ein Fehler auf (z. B. beim Öffnen, beim Download, beim Einlesen oder beim Parsen), wird die betroffene URL bzw. der betroffene Verarbeitungsschritt übersprungen und der Prozess mit der nächsten URL fortgesetzt. Der Import bricht nicht ab.</p>
+	</section>
+
+</article>
+
+
+<article>
+	<h1>Manual Import</h1>
+
+	<section>
+		<h2>Zweck und Ergebnis (Kanäle/Videos aus Google Ads Kontext übernehmen)</h2>
+		<p>Der Manual Import dient dazu, YouTube-Kanäle, die im Google-Ads-Kontext identifiziert wurden, in das System aufzunehmen, ihnen die korrekte Kampagnenquelle zuzuordnen und sie anschließend vollständig über den YouTube Extractor anzureichern, bevor sie als ungeprüft in der Datenbank abgelegt werden.</p>
+		<p>Es gibt Importwege für Kanal-URLs sowie Importwege für Video-URLs. In beiden Fällen ist das Ziel, aus den Eingaben die YouTube-Kanal-ID zu ermitteln, diese als Primärschlüssel zu speichern und die zugehörige Kampagnenzuordnung als Quelle am Kanal zu hinterlegen.</p>
+	</section>
+
+	<section>
+		<h2>Importvarianten Kanal-Import (CSV, Textarea)</h2>
+		<p>Für den Import von YouTube-Kanälen stehen zwei Eingabearten zur Verfügung: ein einheitliches Google-Ads-CSV-Format für Kanäle sowie eine manuelle Texteingabe über ein mehrzeiliges Textfeld (Textarea), in das Kanal-URLs zeilenweise eingefügt werden können.</p>
+		<p>Beim CSV-Import wird ausschließlich die Spalte mit den Kanal-URLs ausgewertet. Alle weiteren Spalten der CSV-Datei sind für das System irrelevant und werden ignoriert. Es existiert nur ein CSV-Typ für Kanalimporte.</p>
+		<p>Aus allen Eingaben wird die Kanal-URL extrahiert. Die YouTube-Kanal-ID wird nicht aus der CSV übernommen, sondern anschließend über den YouTube Extractor aus der URL ermittelt und als Primärschlüssel gespeichert.</p>
+	</section>
+
+	<section>
+		<h2>Importvarianten Video-Import (CSV, Textarea)</h2>
+		<p>Zusätzlich zum Kanal-Import muss ein Import über Video-Links möglich sein. Dabei können Video-URLs entweder über eine CSV-Datei oder über eine manuelle Texteingabe (Textarea, eine Video-URL pro Zeile) in das System eingebracht werden.</p>
+		<p>Für den Video-Import existiert ein eigener CSV-Typ. Aus der CSV wird ausschließlich die Spalte mit den Video-URLs ausgewertet; alle weiteren Spalten werden ignoriert.</p>
+		<p>Die Video-Seiten werden aufgerufen, um aus der jeweiligen Video-URL die zugehörige YouTube-Kanal-ID zu ermitteln. Die Video-URL selbst wird nicht dauerhaft gespeichert; relevant ist ausschließlich die ermittelte Kanal-ID, die anschließend wie ein normaler Kanal-Import weiterverarbeitet wird.</p>
+	</section>
+
+
+	<section>
+		<h2>Kampagnenmodell je Importtyp (getrennte Kampagnenlisten, Zuordnungspflicht)</h2>
+		<p>Für jeden Import ist die Auswahl einer Kampagne verpflichtend. Kampagnen müssen vorab im System angelegt werden und sind nach Importtyp getrennt verwaltet. Es existieren getrennte Kampagnenlisten für Kanal-Importe und für Video-Importe.</p>
+		<p>Beim Import steht jeweils nur die zum Importtyp passende Kampagnenliste zur Auswahl, um Fehlzuordnungen zu vermeiden. Die ausgewählte Kampagne wird als Quelle am Kanal gespeichert.</p>
+	</section>
+
+
+	<section>
+		<h2>Normalisierung und Duplikatverhalten (URL/Video → Kanal-ID; Kampagnen ergänzen)</h2>
+		<p>Alle Importvarianten werden auf eine einheitliche Form normalisiert, indem aus Kanal-URLs oder Video-URLs die YouTube-Kanal-ID ermittelt wird. Die YouTube-Kanal-ID ist der alleinige Primärschlüssel für die Duplikaterkennung.</p>
+		<p>Existiert ein Kanal mit dieser YouTube-Kanal-ID bereits im System, wird kein neuer Kanal angelegt. Stattdessen wird geprüft, ob die aktuelle Kampagne bereits als Quelle hinterlegt ist; falls nicht, wird die Kampagne zur bestehenden Quellenliste des Kanals ergänzt.</p>
+		<p>Unabhängig davon, ob ein Kanal neu angelegt oder nur ergänzt wird, wird im Anschluss der YouTube Extractor ausgeführt, um sicherzustellen, dass alle verfügbaren Kanalinformationen vollständig vorliegen, bevor der Kanal im Status ungeprüft geführt wird.</p>
+	</section>
+</article>
+
+
+<article>
+	<h1>YouTube Extractor</h1>
+
+	<section>
+		<h2>Zweck und Ergebnis (vollständige Profilinformationen via Scraping)</h2>
+		<p>Der YouTube Extractor ist dafür verantwortlich, vollständige Informationen zu einem YouTube-Kanal direkt von YouTube zu laden und in strukturierter Form in der Datenbank abzulegen. Ziel ist es, dass jeder Kanal im System ausschließlich mit vollständig extrahierten Profil- und Inhaltsdaten weiterverarbeitet wird.</p>
+		<p>Der YouTube Extractor wird sowohl vom Social Blade Extractor als auch vom Manual Import genutzt. Ein Kanal gilt erst dann als ungeprüft im System gespeichert, wenn der YouTube Extractor erfolgreich ausgeführt wurde und alle verfügbaren Informationen extrahiert wurden.</p>
+	</section>
+
+	<section>
+		<h2>Downloader (Abruf und Download der Kanal- und Inhaltsdaten)</h2>
+		<p>Der Downloader ruft die YouTube-Seiten des jeweiligen Kanals per Scraping ab. Dabei wird kein offizielles YouTube-API verwendet, sondern die öffentlich zugänglichen Inhalte der Plattform direkt geladen und verarbeitet.</p>
+		<p>Der Downloader lädt alle für den Kanal verfügbaren Informationen herunter, einschließlich Kanalprofil, Kanalbeschreibung, Metadaten sowie aller weiteren Inhalte, die YouTube für den Kanal bereitstellt. Die heruntergeladenen Rohdaten werden zunächst als JSON gespeichert und dienen als Grundlage für die anschließende Extraktion.</p>
+	</section>
+
+	<section>
+		<h2>Extractor (Extraktion aller verfügbaren Felder)</h2>
+		<p>Der Extractor verarbeitet die vom Downloader gespeicherten JSON-Daten und extrahiert daraus alle verfügbaren Informationen, die YouTube für einen Kanal bereitstellt. Dazu zählen unter anderem Kanalname, Kanalbeschreibung, Standort, Metadaten sowie sämtliche textuellen Inhalte der zugehörigen Videos.</p>
+		<p>Auch Datenfelder, die in der ersten Version des Systems noch nicht aktiv für Filterungen verwendet werden, werden vollständig extrahiert und gespeichert, um zukünftige Erweiterungen ohne erneutes Scraping zu ermöglichen.</p>
+	</section>
+
+	<section>
+		<h2>Speicherung und Übergabe an Folgemodule</h2>
+		<p>Nach der Extraktion werden die vollständig aufbereiteten Kanalinformationen in der MongoDB gespeichert. Erst nach erfolgreicher Speicherung gilt der Kanal als vollständig importiert und wird mit dem Status ungeprüft im System geführt.</p>
+		<p>Die gespeicherten Daten dienen als Grundlage für die Vorfilterung, die KI-Filterung sowie für manuelle Überprüfungen. Eine teilweise oder unvollständige Speicherung ist nicht vorgesehen.</p>
+	</section>
+
+</article>
+
+<article>
+	<h1>Vorfilterung</h1>
+
+	<section>
+		<h2>Zweck, Prinzip und Pipeline-Architektur</h2>
+		<p>Die Vorfilterung dient dazu, YouTube-Kanäle ohne Einsatz künstlicher Intelligenz anhand fest definierter, regelbasierter Kriterien zu bewerten und ungeeignete Kanäle frühzeitig als negativ auszusondern. Ziel ist es, die Anzahl der Kanäle, die anschließend durch KI geprüft werden müssen, deutlich zu reduzieren.</p>
+		<p>Die Vorfilterung ist als Pipeline aufgebaut, in der mehrere Filterstufen sequenziell und logisch verundet (AND-Verknüpfung) ausgeführt werden. Jeder Kanal durchläuft die Filterstufen der Reihe nach. Sobald ein Filterkriterium zutrifft, gilt der Kanal als durchgefallen, die Pipeline wird abgebrochen und der Kanal erhält den Status negativ mit der Entscheidungsstufe Vorfilterung.</p>
+		<p>Nur Kanäle, die alle Vorfilter erfolgreich bestehen, erhalten den Status vorgefiltert und werden für die anschließende KI-Filterung vorgemerkt.</p>
+	</section>
+
+	<section>
+		<h2>Standortfilter (D/A/CH; fehlend = bestehen)</h2>
+		<p>Der Standortfilter prüft, ob für einen Kanal ein Standort angegeben ist und ob dieser Standort Deutschland, Österreich oder der Schweiz entspricht. Ist ein Standort angegeben und liegt dieser außerhalb dieser drei Länder, wird der Kanal als negativ eingestuft.</p>
+		<p>Ist für einen Kanal kein Standort hinterlegt oder kann kein Standort ermittelt werden, gilt der Standortfilter als bestanden und die nächste Filterstufe wird ausgeführt.</p>
+	</section>
+
+	<section>
+		<h2>Alphabet-Check (Blacklist-Zeichen; ≥5 verschiedene Treffer = negativ)</h2>
+		<p>Der Alphabet-Check dient dazu, Kanäle mit nicht-lateinischen Alphabeten oder unerwünschten Sonderzeichen frühzeitig auszuschließen. Hierzu wird der gesamte verfügbare textuelle Inhalt eines Kanals geprüft, einschließlich Kanalname, Kanalbeschreibung, Videotitel und aller weiteren von YouTube bereitgestellten Texte.</p>
+		<p>Im System ist eine fest definierte Liste von Zeichen hinterlegt, die als unerwünscht gelten. Werden in den Inhalten eines Kanals mindestens fünf verschiedene Zeichen aus dieser Liste gefunden, gilt der Kanal als negativ. In diesem Fall wird der Deutsch-Check nicht mehr ausgeführt und der Kanal scheidet unmittelbar in der Vorfilterung aus.</p>
+	</section>
+
+	<section>
+		<h2>Deutsch-Check (≥5 Wörter aus Top-1000)</h2>
+		<p>Der Deutsch-Check überprüft, ob die Inhalte eines Kanals mit hoher Wahrscheinlichkeit deutschsprachig sind. Dazu werden alle textuellen Inhalte des Kanals zu einem Textkorpus zusammengeführt und mit einer Liste der 1000 häufigsten deutschen Wörter verglichen.</p>
+		<p>Mindestens fünf verschiedene Wörter aus dieser Liste müssen im Textkorpus vorkommen, damit der Kanal den Deutsch-Check besteht. Wird diese Schwelle nicht erreicht, wird der Kanal als negativ eingestuft.</p>
+	</section>
+
+	<section>
+		<h2>Themenfilter (Keywords + Schwellwerte; Kinder/Beauty/Gaming)</h2>
+		<p>Nach dem Sprachcheck werden inhaltliche Themenfilter ausgeführt, um Kanäle anhand definierter Themenbereiche auszuschließen, die statistisch kein Auftragspotenzial für Formilo aufweisen. Die Themenfilter sind so ausgelegt, dass sie flexibel erweiterbar sind, indem neue Keyword-Listen und zugehörige Schwellwerte ergänzt werden.</p>
+		<p>Jeder Themenfilter besteht aus einer vordefinierten Keyword-Liste sowie einer Konstanten, die festlegt, wie viele Vorkommen bzw. Treffer erforderlich sind, damit der Kanal als thematisch zutreffend erkannt wird. Sobald ein Themenfilter als zutreffend bewertet, gilt der Kanal als negativ und die Vorfilterung wird abgebrochen.</p>
+		<p>In der ersten Version werden mindestens folgende Themenfilter implementiert: Kinderinhalte, Beauty, Gaming. Weitere Themenfilter können später ergänzt werden, ohne die Grundarchitektur der Vorfilterung zu verändern.</p>
+	</section>
+
+	<section>
+		<h2>Ergebnis und Statusübergänge (negativ oder vorgefiltert; Entscheidungsstufe Vorfilterung)</h2>
+		<p>Besteht ein Kanal alle Vorfilterstufen, wird sein Status auf vorgefiltert gesetzt. Dieser Status bedeutet, dass der Kanal die regelbasierte Vorfilterung erfolgreich durchlaufen hat und als Kandidat für die KI-Filterung gilt.</p>
+		<p>Fällt ein Kanal in einer beliebigen Vorfilterstufe durch, wird sein Status auf negativ gesetzt und die Entscheidungsstufe wird auf Vorfilterung gesetzt. Eine zusätzliche Differenzierung, welche konkrete Filterstufe (z. B. Standort, Alphabet, Deutsch, Themenfilter) zum Ausschluss geführt hat, wird nicht gespeichert; es wird lediglich festgehalten, dass der Ausschluss in der Vorfilterung erfolgt ist.</p>
+	</section>
+</article>
+
+
+<article>
+	<h1>KI-Filterung</h1>
+
+	<section>
+		<h2>Ziel und Ablauf (mehrere Prompts; Abbruch bei erster negativer Entscheidung)</h2>
+		<p>Die KI-Filterung dient dazu, Kanäle, die die Vorfilterung bestanden haben, anhand inhaltlicher und zielgruppenbezogener Kriterien weiter zu bewerten. Ziel ist es, komplexere Einschätzungen vorzunehmen, die mit rein regelbasierten Filtern nicht zuverlässig abbildbar sind.</p>
+		<p>Die KI-Filterung ist als sequenzielle Pipeline aus mehreren Prompts aufgebaut und folgt dem gleichen Prinzip wie die Vorfilterung. Jeder Kanal wird Prompt für Prompt geprüft. Sobald ein einzelner Prompt den Kanal als negativ bewertet, wird die KI-Filterung sofort abgebrochen und der Kanal erhält den Status negativ mit der Entscheidungsstufe KI. Nur wenn kein Prompt den Kanal als negativ einstuft, gilt die KI-Filterung insgesamt als bestanden.</p>
+	</section>
+
+	<section>
+		<h2>Prompt-Organisation (Master-Prompt + Einzelprompts)</h2>
+		<p>Die KI-Filterung besteht aus mehreren thematisch getrennten Einzelprompts, die jeweils eine klar abgegrenzte Fragestellung prüfen, z. B. ob Inhalte für Kinder gedacht sind, ob der Kanal primär Gaming- oder Beauty-Inhalte enthält oder ob sich die Inhalte überwiegend an Rentner richten.</p>
+		<p>Zusätzlich zu den Einzelprompts existiert ein globaler Master-Prompt. Dieser wird bei jedem KI-Aufruf automatisch vor oder nach dem jeweiligen Einzelprompt eingefügt und enthält allgemeine Instruktionen, wie z. B. sorgfältiges Arbeiten, exaktes Befolgen der Anweisungen, keine Nutzung externer Ressourcen sowie die strikte Einhaltung des vorgegebenen Ausgabeformats.</p>
+	</section>
+
+	<section>
+		<h2>Schnittstelle zur KI (Prompt rein, Text raus; kein Chat-Kontext)</h2>
+		<p>Die KI wird über eine einfache Textschnittstelle angebunden. Pro Prüfung wird genau ein Prompt an das Modell gesendet und genau eine Antwort als Text zurückgegeben. Es wird kein Chat-Kontext, keine Gesprächshistorie und keine Mehrturn-Interaktion verwendet.</p>
+		<p>Das KI-Modell wird per API angesprochen und liegt außerhalb der Node.js Anwendung. Aktuell ist vorgesehen, die KI selbst gehostet über OLAMA lokal zu betreiben; perspektivisch kann die Modellwahl je Prompt variieren und sich in Zukunft ändern.</p>
+	</section>
+
+	<section>
+		<h2>Ergebnis und Statusübergänge (negativ oder positiv; Entscheidungsstufe KI)</h2>
+		<p>Besteht ein Kanal alle KI-Prompts, wird sein Status auf positiv gesetzt und die Entscheidungsstufe auf KI. Wird ein Kanal durch einen beliebigen Prompt als negativ eingestuft, wird sein Status auf negativ gesetzt und die Entscheidungsstufe auf KI; weitere Prompts werden dann nicht mehr ausgeführt.</p>
+		<p>Es wird nicht gespeichert, welcher konkrete Prompt die Entscheidung ausgelöst hat. Es wird ausschließlich gespeichert, dass der Kanal in der KI-Filterung negativ bzw. positiv eingestuft wurde.</p>
+	</section>
+
+	<section>
+		<h2>Fehlerverhalten (ungültige Antwort ⇒ Kanal überspringen)</h2>
+		<p>Wenn die KI-Antwort für einen Prompt ungültig ist oder nicht im erwarteten Format vorliegt, wird der betroffene Kanal in diesem Durchlauf übersprungen. Es erfolgt in diesem Fall keine Statusänderung und keine erzwungene Einstufung als positiv oder negativ.</p>
+	</section>
+
+</article>
+
+<article>
+	<h1>Manuelle Überprüfung</h1>
+
+	<section>
+		<h2>Ziel und Anwendungsfälle (gezielte Overrides, High-Impression-Kanäle)</h2>
+		<p>Die manuelle Überprüfung ist für Ausnahmefälle vorgesehen und nicht dafür gedacht, Kanäle im großen Stil manuell zu filtern. Sie dient dazu, einzelne Kanäle gezielt zu bewerten oder zu korrigieren, insbesondere bei Kanälen mit sehr hoher Anzahl an Impressionen, bei denen eine manuelle Entscheidung sinnvoll ist.</p>
+		<p>Durch die Kennzeichnung manueller Entscheidungen soll es möglich sein, Kanäle, die bereits manuell geprüft wurden, bei späteren Analysen und Bearbeitungen gezielt auszuschließen, um sich auf Kanäle zu konzentrieren, die noch nie manuell markiert wurden.</p>
+	</section>
+
+	<section>
+		<h2>Manuelle Statusänderung und Kennzeichnung (Entscheidungsstufe manuell)</h2>
+		<p>Es muss möglich sein, den Status eines Kanals manuell zu ändern, insbesondere auf negativ oder positiv. Wird ein Kanal manuell als negativ oder positiv markiert, wird zusätzlich gespeichert, dass die Entscheidung manuell getroffen wurde (Entscheidungsstufe manuell).</p>
+		<p>Manuelle Entscheidungen sind final in dem Sinne, dass ein manuell entschiedener Kanal nicht automatisch erneut durch die KI geprüft wird. Die Kennzeichnung dient der Nachvollziehbarkeit und der gezielten Filterbarkeit in den Listenansichten.</p>
+	</section>
+
+	<section>
+		<h2>Massenänderungen und Reset auf ungeprüft (für Re-Checks)</h2>
+		<p>In den Listenansichten für positive und negative Kanäle muss es möglich sein, Kanäle massenhaft in einen anderen Status zu überführen oder auf ungeprüft zurückzusetzen. Dies dient dazu, bei verbesserten Vorfilter-Regeln oder verbesserten KI-Prompts erneut vollständige Prüfungen durchzuführen.</p>
+		<p>Die Auswahl der betroffenen Kanäle erfolgt über vorherige Filterung in der Benutzeroberfläche, insbesondere um manuell entschiedene Kanäle bei Bedarf auszuschließen. Nach dem Reset auf ungeprüft können diese Kanäle erneut durch die Vorfilterung und anschließend durch die KI-Filterung verarbeitet werden.</p>
+	</section>
+</article>
+
+
+<article>
+	<h1>Export</h1>
+
+	<section>
+		<h2>Zweck und Selektionslogik (negativ/positiv/beide; Quellenfilter)</h2>
+		<p>Das Export-Modul dient dazu, die im System klassifizierten Kanäle als Datei bereitzustellen, um sie insbesondere in Google Ads zu importieren. Beim Export wird ausgewählt, ob negative, positive oder beide Kanalgruppen exportiert werden sollen; standardmäßig ist negativ vorausgewählt.</p>
+		<p>Zusätzlich wird festgelegt, welche Quellen in den Export einbezogen werden. Standardmäßig sind alle Quellen aktiviert, d. h. Social Blade sowie alle Kampagnenquellen. Es muss möglich sein, einzelne Quellen abzuwählen, sodass nur Kanäle exportiert werden, die mindestens einer der ausgewählten Quellen zugeordnet sind.</p>
+		<p>Der Export ist ein Full-Export: Es werden immer alle Kanäle exportiert, die den gewählten Filterkriterien entsprechen. Es gibt keine Delta-Logik und keine Limitierungen hinsichtlich Anzahl oder Dateigröße.</p>
+	</section>
+
+	<section>
+		<h2>Exportformate (TXT, CSV Google-Ads-Format hardcodiert)</h2>
+		<p>Es werden zwei Exportformate unterstützt: TXT und CSV. Beim TXT-Export werden die YouTube-URLs der Kanäle zeilenweise ausgegeben, eine URL pro Zeile.</p>
+		<p>Beim CSV-Export wird ein fest vorgegebenes, im Programmcode hart codiertes CSV-Format verwendet, das für den Import in Google Ads vorgesehen ist. Das CSV-Format ist nicht konfigurierbar und wird direkt im Code definiert.</p>
+	</section>
+
+	<section>
+		<h2>Exportausgabe (Browser-Download; Full-Export)</h2>
+		<p>Nach Auswahl von Ausgabeformat, Kanalgruppe (negativ/positiv/beide) und Quellenfilter wird der Export ausgelöst. Die erzeugte Datei wird dem Benutzer über den Browser als Download bereitgestellt.</p>
+		<p>Es erfolgt keine Markierung „bereits exportiert“ und keine Einschränkung der Exportmenge; der Export liefert stets alle passenden Kanäle entsprechend der aktuellen Datenbankinhalte und der gewählten Filtereinstellungen.</p>
+	</section>
+</article>
+
+<article>
+	<h1>Benutzeroberfläche</h1>
+
+	<section>
+		<h2>Navigationskonzept (Tabs)</h2>
+		<p>Die Benutzeroberfläche ist bewusst simpel gehalten, um den Entwicklungsaufwand gering zu halten. Das Layout basiert auf Tabs. Es gibt in dieser Reihenfolge Tabs für Social Blade Import, manueller Import, ungeprüft, vorgefiltert, negativ und positiv.</p>
+	</section>
+
+	<section>
+		<h2>Views und Kernaktionen (Ungeprüft → Vorfilterung; Vorgefiltert → KI)</h2>
+		<p>Im Tab ungeprüft werden alle Kanäle angezeigt, für die noch keine Vorfilterung durchgeführt wurde. Beim Betreten der Ansicht sind automatisch alle ungeprüften Kanäle implizit ausgewählt; es gibt keine manuelle Auswahl. Es existiert eine Schaltfläche Vorfilterung durchführen, die die Vorfilterung für alle ungeprüften Kanäle startet und deren Status entsprechend aktualisiert.</p>
+		<p>Im Tab vorgefiltert werden alle Kanäle angezeigt, die die Vorfilterung bestanden haben, aber noch nicht durch KI gefiltert wurden. Es existiert eine Schaltfläche KI filtern, die die KI-Filterung für alle vorgefilterten Kanäle startet.</p>
+		<p>Da die KI-Filterung lange dauern kann, müssen Entscheidungen pro Kanal unmittelbar nach erfolgreicher Prüfung in der Datenbank gespeichert werden. Wird der Vorgang unterbrochen oder abgebrochen, dürfen bereits geprüfte Kanäle nicht erneut geprüft werden müssen; der Fortschritt muss durch die sofortige Persistenz erhalten bleiben.</p>
+	</section>
+
+	<section>
+		<h2>Listenanzeige und Ladelimits (1.000 Default, 10k/100k/1M/alle)</h2>
+		<p>In den Tabs negativ und positiv wird jeweils die Anzahl der Kanäle angezeigt und die Kanäle werden in Listenform ausgegeben. Für beide Listen gibt es eine Auswahl, wie viele Datensätze aus der Datenbank geladen werden: 1000, 10.000, 100.000, eine Million oder alle.</p>
+		<p>Standardmäßig werden sowohl bei negativen als auch bei positiven Kanälen jeweils nur 1000 Datensätze aus der Datenbank geladen.</p>
+	</section>
+
+	<section>
+		<h2>Persistenz bei Unterbrechungen (pro Kanal sofort speichern)</h2>
+		<p>Bei langlaufenden Verarbeitungsschritten, insbesondere bei der KI-Filterung, müssen Statusänderungen und Entscheidungen unmittelbar nach jeder erfolgreichen Kanalprüfung gespeichert werden. Dadurch bleibt der Bearbeitungsstand auch bei Unterbrechungen erhalten und es wird verhindert, dass Kanäle nach einem Abbruch erneut vollständig verarbeitet werden müssen.</p>
+	</section>
+</article>
