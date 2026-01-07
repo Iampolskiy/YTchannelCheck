@@ -8,12 +8,19 @@
   </head>
 
   <body>
+    <!--
+      ==========================================================
+      TOPBAR / HEADER
+      ==========================================================
+      - Nur UI: Titel + Link zu "Collections ansehen"
+      - Der Server läuft lokal auf http://localhost:3000
+    -->
     <header class="topbar">
       <div class="container topbar__inner">
         <div class="brand">
           <div class="brand__text">
             <div class="brand__title">YouTubeChannelCheck</div>
-            <div class="brand__subtitle">SocialBlade HTML → MongoDB</div>
+            <div class="brand__subtitle">SocialBlade → YouTube → MongoDB</div>
           </div>
         </div>
 
@@ -25,26 +32,54 @@
     </header>
 
     <main class="container">
+      <!--
+        ==========================================================
+        HERO / ERKLÄRUNG OBEN
+        ==========================================================
+        Du hast ZWEI Wege um Prozess 1 zu starten:
+
+        (A) NORMAL (sb-html):
+            - Du lädst SocialBlade HTML-Dateien hoch (Upload).
+            - Sie landen in /input.
+            - Dann klickst du "Start Prozess 1 (input → vorgefiltert)"
+              -> Server liest HTML-Dateien aus /input.
+
+        (B) SPEZIAL (sb-special):
+            - Du hast fertige SocialBlade-Linklisten (Textdateien) in /inputYT.
+            - Du klickst "Start Prozess 1 (inputYT → vorgefiltert)"
+              -> Server liest Linklisten aus /inputYT und extrahiert daraus SocialBlade URLs.
+
+        Danach startest du Prozess 2:
+            - (vorgefiltert → vorgefiltertCode) mit deinen Regeln
+      -->
       <section class="hero">
         <h1>Import & Prüfung von YouTube-Kanälen</h1>
         <p>
-          Du lädst SocialBlade-HTML-Dateien hoch. Danach startet Prozess 1:
-          Kanäle werden extrahiert und (wenn neu) in die Collection
-          <b>vorgefiltert</b> gespeichert.
+          Prozess 1 sammelt Kanäle aus SocialBlade-Quellen und schreibt sie nach
+          <b>vorgefiltert</b>. Danach prüft Prozess 2 die Regeln und schreibt
+          „bestehende“ Kanäle nach <b>vorgefiltertCode</b>.
         </p>
       </section>
 
       <section class="grid">
-        <!-- OPTION 1 -->
+        <!--
+          ==========================================================
+          OPTION 1 CARD
+          ==========================================================
+          - Upload von SocialBlade HTML
+          - Start Prozess 1 im NORMAL-Modus
+          - Start Prozess 1 im SPEZIAL-Modus (inputYT)
+          - Start Prozess 2 (Filter-Regeln)
+        -->
         <div class="card">
           <div class="card__head">
-            <h2>Upload Option 1 (SocialBlade)</h2>
+            <h2>Option 1 (SocialBlade)</h2>
             <span class="tag tag--ok">Aktiv</span>
           </div>
 
           <p class="muted">
-            Lade SocialBlade <b>.html</b> Dateien hoch. <br />Sie werden in den
-            Ordner <code>/input</code> gespeichert.
+            <b>Normal:</b> Lade SocialBlade <b>.html</b> Dateien hoch.<br />
+            Sie werden in den Ordner <code>/input</code> gespeichert.
           </p>
 
           <div class="row">
@@ -64,12 +99,51 @@
 
           <div class="divider"></div>
 
+          <!--
+            ==========================================================
+            PROZESS 1 (NORMAL)
+            ==========================================================
+            - Startet den Server-Endpunkt /process/sb-html-to-db
+            - Body: { inputMode: "sb-html" } oder einfach {}
+            - Server nutzt dann DEFAULT_INPUT_DIR (/input)
+          -->
           <button id="btnProcessSbToDb" class="btn btn--success btn--wide">
-            Start Prozess 1 (HTML → vorgefiltert)
+            Start Prozess 1 (input → vorgefiltert)
           </button>
 
           <div class="divider"></div>
 
+          <!--
+            ==========================================================
+            PROZESS 1 (SPEZIAL: inputYT)
+            ==========================================================
+            - Startet den GLEICHEN Endpunkt: /process/sb-html-to-db
+            - ABER mit Body:
+                { inputMode: "sb-special", inputDir: "inputYT" }
+            - Dadurch nutzt dein runJob() den Spezial-Branch
+              und liest Linklisten aus /inputYT.
+          -->
+          <button
+            id="btnProcessSbToDbInputYT"
+            class="btn btn--success btn--wide"
+          >
+            Start Prozess 1 (inputYT → vorgefiltert)
+          </button>
+
+          <div class="divider"></div>
+
+          <!--
+            ==========================================================
+            PROZESS 2 (FILTER: vorgefiltert → vorgefiltertCode)
+            ==========================================================
+            WICHTIG: Die Options-Namen müssen zu deiner server.js passen.
+
+            In deiner server.js heißen die Parameter:
+              - minDistinctGermanWordsTotal
+              - maxBadCharsDistinctPerField
+
+            (Nicht mehr: minDistinctGermanWords)
+          -->
           <button
             id="btnProcessVorgefiltertToCode"
             class="btn btn--success btn--wide"
@@ -79,7 +153,10 @@
           </button>
 
           <div class="hint">
-            Tipp: Erst hochladen, dann Prozess 1. Danach Prozess 2.
+            Tipp: Für den Normal-Flow: Erst hochladen → Prozess 1 (input) →
+            Prozess 2.
+            <br />
+            Für Tests: Prozess 1 (inputYT) → Prozess 2.
           </div>
         </div>
 
@@ -114,7 +191,13 @@
         </div>
       </section>
 
-      <!-- STATUS + ERGEBNIS -->
+      <!--
+        ==========================================================
+        STATUS + OUTPUT PANEL
+        ==========================================================
+        - Status zeigt dir "Bereit / Work / Ok / Warn / Error"
+        - Output zeigt JSON Boxen + Live Logs
+      -->
       <section class="panel">
         <div class="panel__head">
           <h3>Status & Ergebnis</h3>
@@ -149,9 +232,15 @@
     </footer>
 
     <script>
-      // -----------------------------
-      // Kleine UI-Helfer
-      // -----------------------------
+      /**
+       * ==========================================================
+       * UI-HELPER
+       * ==========================================================
+       * - $() spart Tipparbeit bei document.getElementById
+       * - setStatus(...) setzt Klasse + Texte in der Statusbox
+       * - escapeHtml(...) schützt vor HTML-Injection im Output (wichtig)
+       * - renderJsonBox(...) rendert JSON schön als Box
+       */
       const $ = (id) => document.getElementById(id);
 
       function setStatus(type, title, text) {
@@ -179,11 +268,16 @@
         `;
       }
 
-      // -----------------------------
-      // Upload Option 1
-      // -----------------------------
+      /**
+       * ==========================================================
+       * UPLOAD OPTION 1 (HTML → /input)
+       * ==========================================================
+       * - Frontend sendet FormData an /upload/option1
+       * - Server speichert Dateien in DEFAULT_INPUT_DIR (/input)
+       */
       $("btnUpload1").addEventListener("click", async () => {
         const input = $("filesOption1");
+
         if (!input.files || input.files.length === 0) {
           setStatus(
             "warn",
@@ -209,9 +303,8 @@
           });
           const data = await res.json();
 
-          if (!res.ok || !data.ok) {
+          if (!res.ok || !data.ok)
             throw new Error(data.error || "Upload fehlgeschlagen");
-          }
 
           setStatus(
             "ok",
@@ -225,9 +318,19 @@
         }
       });
 
-      // -----------------------------
-      // Job Starter (wiederverwendbar)
-      // -----------------------------
+      /**
+       * ==========================================================
+       * JOB STARTER (wiederverwendbar)
+       * ==========================================================
+       * startJob(endpoint, bodyObj)
+       * - POSTet JSON an endpoint
+       * - Server antwortet mit jobId + stream URL
+       * - Wir öffnen EventSource /api/jobs/:jobId/stream
+       * - Wir zeigen live:
+       *    - Step
+       *    - Progress
+       *    - Logs
+       */
       async function startJob(endpoint, bodyObj) {
         setStatus(
           "work",
@@ -271,9 +374,8 @@
           });
 
           const startData = await res.json();
-          if (!res.ok || !startData.ok) {
+          if (!res.ok || !startData.ok)
             throw new Error(startData.error || "Job-Start fehlgeschlagen");
-          }
 
           const jobId = startData.jobId;
           jobMetaEl.textContent = `Job: ${jobId}`;
@@ -336,28 +438,68 @@
         }
       }
 
-      // -----------------------------
-      // Prozess 1
-      // -----------------------------
+      /**
+       * ==========================================================
+       * PROZESS 1 (NORMAL /input)
+       * ==========================================================
+       * - Du hast zwei Möglichkeiten, beide funktionieren:
+       *    1) {} senden (Server default: sb-html + /input)
+       *    2) explizit inputMode: "sb-html" senden
+       * - Ich sende hier explizit, damit es klar ist.
+       */
       $("btnProcessSbToDb").addEventListener("click", async () => {
-        await startJob("/process/sb-html-to-db", {});
-      });
-
-      // -----------------------------
-      // Prozess 2 (mit Beispiel-Optionen)
-      // -----------------------------
-      $("btnProcessVorgefiltertToCode").addEventListener("click", async () => {
-        await startJob("/process/vorgefiltert-to-vorgefiltertCode", {
-          minDistinctGermanWords: 5,
-          dryRun: false,
-          limit: 0,
-          // deutschArray: [...] // optional überschreiben
+        await startJob("/process/sb-html-to-db", {
+          inputMode: "sb-html",
+          // inputDir NICHT setzen -> server nutzt DEFAULT_INPUT_DIR (= /input)
         });
       });
 
-      // -----------------------------
-      // Ausgabe löschen
-      // -----------------------------
+      /**
+       * ==========================================================
+       * PROZESS 1 (SPEZIAL /inputYT)
+       * ==========================================================
+       * - Der Server braucht:
+       *    inputMode: "sb-special"
+       *    inputDir: "inputYT"
+       * - Dann nimmt runJob() automatisch den Spezial-Branch und
+       *   ruft loadChannelsFromSbLinkFolder(...) auf.
+       */
+      $("btnProcessSbToDbInputYT").addEventListener("click", async () => {
+        await startJob("/process/sb-html-to-db", {
+          inputMode: "sb-special",
+        });
+      });
+
+      /**
+       * ==========================================================
+       * PROZESS 2 (vorgefiltert → vorgefiltertCode)
+       * ==========================================================
+       * WICHTIG: Deine server.js erwartet diese Options-Namen:
+       *   - minDistinctGermanWordsTotal
+       *   - maxBadCharsDistinctPerField
+       *
+       * Deshalb setzen wir die hier korrekt.
+       */
+      $("btnProcessVorgefiltertToCode").addEventListener("click", async () => {
+        await startJob("/process/vorgefiltert-to-vorgefiltertCode", {
+          // ✅ korrekte Namen für deine server.js:
+          minDistinctGermanWordsTotal: 5,
+          maxBadCharsDistinctPerField: 3,
+
+          dryRun: false,
+          limit: 0,
+
+          // Optional:
+          // deutschArray: [...],
+          // badCharArray: [...],
+        });
+      });
+
+      /**
+       * ==========================================================
+       * OUTPUT CLEAR
+       * ==========================================================
+       */
       $("btnClear").addEventListener("click", () => {
         $("output").innerHTML = "";
         setStatus("idle", "Bereit", "Wähle Dateien aus und starte den Upload.");

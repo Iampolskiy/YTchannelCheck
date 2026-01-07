@@ -2,38 +2,30 @@
  * server.js (ESM)
  * ==========================
  *
- * Dieses Backend hat jetzt ZWEI Prozesse:
+ * Dieses Backend hat zwei Prozesse:
  *
- * Prozess 1: SocialBlade HTML → YouTube /about + /videos → MongoDB "vorgefiltert"
+ * Prozess 1: SocialBlade → YouTube /about + /videos → MongoDB "vorgefiltert"
  *   - Route: POST /process/sb-html-to-db
  *
  * Prozess 2: MongoDB "vorgefiltert" → Regeln prüfen → MongoDB "vorgefiltertCode"
  *   - Route: POST /process/vorgefiltert-to-vorgefiltertCode
  *
- * Warum Prozess 2?
- * - Du willst nach dem Sammeln der Daten eine zweite, reine "Code-Prüfung"
- *   (ohne neue YouTube-Requests), um nur "deutsche Kanäle" weiterzuleiten.
+ * ------------------------------------------------------------
+ * WICHTIG: INPUT-MODE (Prozess 1)
+ * ------------------------------------------------------------
+ * Der Input-Mode wird vom Frontend per JSON (req.body) geschickt.
  *
- * Regeln für Prozess 2 (NEU - aktuelle Reihenfolge):
- * 1) channelInfo.country muss "Deutschland" sein (case-insensitive)
+ * inputMode === "sb-html"
+ *   -> lies HTML Dateien aus /input
+ *   -> extrahiere youtube channel urls/ids aus HTML
  *
- * 2) NON_GERMAN_UNICODE_CHARS Check (ZUERST!)
- *    - Prüfe JEWEILS EINZELN:
- *      - channelInfo.title
- *      - channelInfo.description
- *      - videos[i].title (alle)
- *    - Wenn EIN Feld mehr als 3 VERSCHIEDENE (unique) "nicht-deutsche" Zeichen enthält:
- *      => Kanal ist vermutlich nicht deutsch => RAUS (nicht in vorgefiltertCode schreiben)
- *    - Zusätzlich: Report "wo & welche Zeichen" (für Logging/Debug)
+ * inputMode === "sb-special"
+ *   -> lies Linklisten (Textdateien) aus /inputYT
+ *   -> parse SocialBlade handle links:
+ *      z.B. "https://socialblade.com/youtube/handle/alkoholkenndeinlimit", ...
+ *   -> baue daraus YouTube @handle Links
  *
- * 3) DEUTSCH_WORDS_ARRAY Check (DANACH!)
- *    - Prüfe den GESAMTEN Text des Kanals (title + description + alle video titles)
- *    - Wenn weniger als 5 VERSCHIEDENE (unique) deutsche Wörter gefunden werden:
- *      => Kanal vermutlich nicht deutsch => RAUS
- *
- * Hinweis:
- * - Wir speichern Metadaten unter doc.codeCheck (nur für "INCLUDED" Docs),
- *   damit du siehst, warum ein Kanal durchgelassen wurde.
+ * Damit das robust ist, setzt runJob() den Default inputDir abhängig vom inputMode.
  */
 
 import express from "express";
@@ -57,6 +49,14 @@ import { VorgefiltertCode } from "./lib/models/VorgefiltertCode.js";
 import { DEUTSCH_WORDS_ARRAY } from "./lib/config/deutschArray.js";
 import { NON_GERMAN_UNICODE_CHARS } from "./lib/config/charArray.js";
 
+// ✅ Kids-Phrasen-Array (deine Datei)
+import { KIDS_HARD_PHRASES } from "./lib/config/blockedPhrasesArrayKids.js";
+
+// ✅ Kids-Check-Logik (separate Datei)
+import { kidsHardPhrasesCheck } from "./lib/codeChecks/kidsHardPhrasesCheck.js";
+
+import { loadChannelsFromSbLinkFolder } from "./lib/sbSpecialInput.js";
+
 // ---------------------------------------------------------------------------
 // __dirname Ersatz (weil ESM)
 // ---------------------------------------------------------------------------
@@ -67,6 +67,7 @@ const __dirname = path.dirname(__filename);
 // Konfiguration
 // ---------------------------------------------------------------------------
 const DEFAULT_INPUT_DIR = path.join(__dirname, "input");
+const DEFAULT_INPUT_YT_DIR = path.join(__dirname, "inputYT");
 
 // Standard-Optionen für Internet-Anfragen (Fetch).
 const DEFAULT_FETCH_OPTIONS = {
@@ -93,15 +94,15 @@ const AI_SIM_MAX_MS_DEFAULT = 75_000;
 const VIDEOS_LIMIT_DEFAULT = 30;
 
 /**
- * NEU (Prozess 2):
+ * Prozess 2:
  * - Wenn EIN Feld (channel title, channel description oder irgendein video title)
- *   mehr als 3 VERSCHIEDENE (unique) BadChars hat => raus.
+ *   mehr als X VERSCHIEDENE (unique) BadChars hat => raus.
  */
 const DEFAULT_MAX_BAD_CHARS_DISTINCT_PER_FIELD = 3;
 
 /**
- * NEU (Prozess 2):
- * - Wenn im gesamten Kanaltext (title+desc+videos titles) weniger als 5
+ * Prozess 2:
+ * - Wenn im gesamten Kanaltext (title+desc+videos titles) weniger als X
  *   VERSCHIEDENE (unique) Wörter aus DEUTSCH_WORDS_ARRAY vorkommen => raus.
  */
 const DEFAULT_MIN_GERMAN_WORDS_DISTINCT_TOTAL = 5;
@@ -147,35 +148,21 @@ async function ensureDir(dir) {
     // Wenn Ordner existiert: kein Fehler.
   }
 }
+
+// Wir stellen sicher, dass beide Ordner existieren.
 await ensureDir(DEFAULT_INPUT_DIR);
+await ensureDir(DEFAULT_INPUT_YT_DIR);
 
 // ---------------------------------------------------------------------------
 // Deutsch-Check Helfer (Prozess 2)
 // ---------------------------------------------------------------------------
 
-/**
- * Tokenizer: Wandelt Text in ein Set einzelner "Wörter" um.
- * - lowercase
- * - trennt an allem, was kein Buchstabe/Zahl ist
- *
- * Hinweis:
- * - Das ist eine einfache, robuste Methode.
- * - Für mehr Genauigkeit könnte man später Stemming/Stopwords machen.
- */
 function tokenizeText(text) {
   const t = String(text || "").toLowerCase();
-
-  // Unicode-freundlich: Buchstaben/Zahlen bleiben, Rest trennt.
   const parts = t.split(/[^\p{L}\p{N}]+/gu).filter(Boolean);
   return new Set(parts);
 }
 
-/**
- * Baut aus einem vorgefiltert-Dokument den gesamten "Text-Content":
- * - channelInfo.title
- * - channelInfo.description
- * - alle videos[].title
- */
 function buildChannelContentText(doc) {
   const title = doc?.channelInfo?.title || "";
   const desc = doc?.channelInfo?.description || "";
@@ -187,12 +174,6 @@ function buildChannelContentText(doc) {
   return `${title}\n${desc}\n${videoTitles}`.trim();
 }
 
-/**
- * Helper: Extrahiert Texte, die wir getrennt prüfen wollen.
- * - title
- * - description
- * - videoTitles[] (Array)
- */
 function getTextsToCheck(doc) {
   const channelTitle = String(doc?.channelInfo?.title || "");
   const channelDescription = String(doc?.channelInfo?.description || "");
@@ -202,31 +183,12 @@ function getTextsToCheck(doc) {
   return { channelTitle, channelDescription, videoTitles };
 }
 
-/**
- * -------------------------------------------
- * Regel 2 (NEU): NON_GERMAN_UNICODE_CHARS
- * -------------------------------------------
- * Wir prüfen pro Feld: "wie viele VERSCHIEDENE (unique) bad chars kommen vor?"
- *
- * Wenn EIN Feld > maxDistinctPerField hat => ok=false (Kanal raus)
- *
- * Zusätzlich liefern wir "matches" zurück, damit du sehen kannst:
- * - in welchem Feld
- * - welche Zeichen
- * - und ein kurzer Textausschnitt
- */
 function scanDistinctBadCharsInText(text, badSet) {
   const found = new Set();
-
-  // for..of: unicode-sicher (Codepoints)
   for (const ch of String(text || "")) {
     if (badSet.has(ch)) found.add(ch);
   }
-
-  return {
-    distinctCount: found.size,
-    chars: Array.from(found),
-  };
+  return { distinctCount: found.size, chars: Array.from(found) };
 }
 
 function nonGermanCharsDistinctPerFieldCheck(
@@ -237,7 +199,6 @@ function nonGermanCharsDistinctPerFieldCheck(
   const list = Array.isArray(badCharArray) ? badCharArray : [];
   const badSet = new Set(list.map((c) => String(c || "")).filter(Boolean));
 
-  // Wenn keine bad chars definiert: Regel bestanden
   if (badSet.size === 0) {
     return { ok: true, maxDistinctPerField, matches: [] };
   }
@@ -248,7 +209,6 @@ function nonGermanCharsDistinctPerFieldCheck(
   const matches = [];
   let ok = true;
 
-  // 1) channel title
   {
     const r = scanDistinctBadCharsInText(channelTitle, badSet);
     if (r.distinctCount > 0) {
@@ -262,7 +222,6 @@ function nonGermanCharsDistinctPerFieldCheck(
     if (r.distinctCount > maxDistinctPerField) ok = false;
   }
 
-  // 2) channel description
   {
     const r = scanDistinctBadCharsInText(channelDescription, badSet);
     if (r.distinctCount > 0) {
@@ -276,7 +235,6 @@ function nonGermanCharsDistinctPerFieldCheck(
     if (r.distinctCount > maxDistinctPerField) ok = false;
   }
 
-  // 3) video titles
   for (let i = 0; i < videoTitles.length; i++) {
     const title = videoTitles[i];
     const r = scanDistinctBadCharsInText(title, badSet);
@@ -296,31 +254,15 @@ function nonGermanCharsDistinctPerFieldCheck(
   return { ok, maxDistinctPerField, matches };
 }
 
-/**
- * -------------------------------------------
- * Regel 3 (NEU): DEUTSCH_WORDS_ARRAY
- * -------------------------------------------
- * Wir prüfen den GESAMTEN Kanaltext zusammen (title + desc + video titles).
- *
- * Wichtig:
- * - gezählt werden VERSCHIEDENE (unique) deutsche Wörter
- * - minDistinct = 5 => wenn < 5 => ok=false (Kanal raus)
- *
- * Rückgabe enthält zusätzlich ein "Sample" gefundener Wörter.
- */
 function germanWordsDistinctTotalCheck(doc, deutschArray, minDistinct = 5) {
   const list = Array.isArray(deutschArray) ? deutschArray : [];
-
-  // Deutsch-Wortliste normalisieren
   const deutschSet = new Set(
     list.map((w) => String(w || "").toLowerCase()).filter(Boolean)
   );
 
-  // gesamter Kanaltext
   const content = buildChannelContentText(doc);
   const tokens = tokenizeText(content);
 
-  // Hier zählen wir UNIQUE-Wörter (distinct)
   const found = [];
   for (const w of deutschSet) {
     if (tokens.has(w)) found.push(w);
@@ -334,22 +276,14 @@ function germanWordsDistinctTotalCheck(doc, deutschArray, minDistinct = 5) {
   };
 }
 
-/**
- * Regel 1: Country muss "Deutschland" sein.
- * - trim
- * - case-insensitive
- */
 function isCountryDeutschland(doc) {
   const c = String(doc?.channelInfo?.country || "")
     .trim()
     .toLowerCase();
   const allowed = new Set(["deutschland", "germany", "de", "deutsch"]);
   if (allowed.has(c)) return true;
-
-  // falls sowas wie "Deutschland (DE)" kommt
   if (c.includes("deutschland")) return true;
   if (c.includes("germany")) return true;
-
   return false;
 }
 
@@ -394,8 +328,7 @@ app.post("/upload/option1", upload.array("files", 200), async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Job Speicher im Arbeitsspeicher
-// - Wir nutzen für beide Prozesse die gleiche Job-Struktur + SSE
+// Job Speicher im Arbeitsspeicher + SSE
 // ---------------------------------------------------------------------------
 const jobs = new Map();
 const jobEventClients = new Map();
@@ -410,11 +343,7 @@ function createJob({ options }) {
     finishedAt: null,
     options: options || {},
 
-    // progress wird von beiden Prozessen genutzt.
-    // Prozess 1 nutzt channelsTotal/channelsDone
-    // Prozess 2 nutzt die gleichen Felder ebenfalls (scanned als channelsDone)
     progress: {
-      // Prozess 1
       htmlFilesFound: 0,
       htmlFilesParsed: 0,
       channelsTotal: 0,
@@ -426,7 +355,6 @@ function createJob({ options }) {
       ytVideosFailed: 0,
       aiDone: 0,
 
-      // Prozess 2 (werden dynamisch ergänzt)
       scanned: 0,
       passedCountry: 0,
       passedLanguage: 0,
@@ -434,9 +362,8 @@ function createJob({ options }) {
       skippedNotDeutschland: 0,
       skippedNotGerman: 0,
 
-      // ✅ NEU: damit UI/Stats nicht "undefined" zeigt
       skippedBadChars: 0,
-
+      skippedKidsHard: 0,
       errors: 0,
     },
 
@@ -458,7 +385,7 @@ function createJob({ options }) {
 }
 
 // ---------------------------------------------------------------------------
-// Server-Sent Events Hilfen
+// SSE helpers
 // ---------------------------------------------------------------------------
 function sseSend(res, eventName, dataObj) {
   res.write(`event: ${eventName}\n`);
@@ -493,14 +420,6 @@ function emitLog(jobId, level, message, extra = null) {
   }
 }
 
-/**
- * Snapshot ist die "Statusanzeige" im Frontend.
- * Dein index.html nutzt:
- * - snap.status
- * - snap.step
- * - snap.progress.current / total
- * - snap.stats (optional)
- */
 function emitSnapshot(jobId, patch = {}) {
   const job = jobs.get(jobId);
   if (!job) return;
@@ -534,7 +453,7 @@ function emitSnapshot(jobId, patch = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// 1) HTML Dateien finden (.html und .htm)
+// Prozess 1: HTML Dateien finden
 // ---------------------------------------------------------------------------
 async function findHtmlFiles(dirPath) {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
@@ -560,7 +479,7 @@ async function findHtmlFiles(dirPath) {
 }
 
 // ---------------------------------------------------------------------------
-// 2) YouTube Kanäle aus SocialBlade-HTML extrahieren
+// Prozess 1: YouTube Kanäle aus SocialBlade-HTML extrahieren
 // ---------------------------------------------------------------------------
 function extractYoutubeChannelsFromHtml(html) {
   const results = [];
@@ -568,7 +487,6 @@ function extractYoutubeChannelsFromHtml(html) {
 
   let m;
 
-  // A) Vollständige Links mit /channel/UC...
   const reChannelId =
     /https?:\/\/(?:www\.)?youtube\.com\/channel\/(UC[a-zA-Z0-9_-]{20,})/g;
 
@@ -580,7 +498,6 @@ function extractYoutubeChannelsFromHtml(html) {
     });
   }
 
-  // B) Escaped Links
   const reChannelIdEscaped =
     /https?:\\\/\\\/(?:www\.)?youtube\.com\\\/channel\\\/(UC[a-zA-Z0-9_-]{20,})/g;
 
@@ -592,7 +509,6 @@ function extractYoutubeChannelsFromHtml(html) {
     });
   }
 
-  // C) Relative Links /channel/UC...
   const reRelative = /\/channel\/(UC[a-zA-Z0-9_-]{20,})/g;
 
   while ((m = reRelative.exec(html))) {
@@ -603,19 +519,17 @@ function extractYoutubeChannelsFromHtml(html) {
     });
   }
 
-  // D) Handle Links /@handle
   const reHandle = /https?:\/\/(?:www\.)?youtube\.com\/@([a-zA-Z0-9._-]{3,})/g;
 
   while ((m = reHandle.exec(html))) {
     const handleName = m[1];
     results.push({
-      youtubeId: null, // kommt später aus ytInitialData (id)
+      youtubeId: null,
       youtubeUrl: `https://www.youtube.com/@${handleName}`,
       youtubeHandle: `@${handleName}`,
     });
   }
 
-  // Duplikate innerhalb einer Datei entfernen
   const seen = new Set();
   const uniq = [];
 
@@ -639,9 +553,7 @@ function channelKey(ch) {
   return ch.youtubeId || ch.youtubeUrl || ch.youtubeHandle;
 }
 
-// URL Builder
 function makeYoutubeMainUrl(ch) {
-  // "main" ist nur noch die Basis-URL (ohne Fetch!)
   if (ch?.youtubeUrl) return normalizeYoutubeUrl(ch.youtubeUrl);
   return `https://www.youtube.com/channel/${encodeURIComponent(ch.youtubeId)}`;
 }
@@ -659,7 +571,7 @@ function makeYoutubeVideosUrl(ch) {
 }
 
 // ---------------------------------------------------------------------------
-// 3) KI Simulation: nur warten (optional)
+// KI Simulation: nur warten (optional)
 // ---------------------------------------------------------------------------
 async function simulateAiCheck({ jobId, channel, minMs, maxMs }) {
   const simulateMs = pickRandomInt(minMs, maxMs);
@@ -682,7 +594,7 @@ async function simulateAiCheck({ jobId, channel, minMs, maxMs }) {
 }
 
 // ---------------------------------------------------------------------------
-// 4) YouTube JSON sicher parsen (defensiv)
+// YouTube JSON defensiv parsen
 // ---------------------------------------------------------------------------
 function parseChannelInfoSafe(jobId, youtubeKey, ytData, label) {
   if (!ytData) {
@@ -710,7 +622,7 @@ function parseChannelInfoSafe(jobId, youtubeKey, ytData, label) {
 }
 
 // ---------------------------------------------------------------------------
-// 5) YouTube Seiten laden: NUR /about und /videos
+// YouTube Seiten laden: NUR /about und /videos
 // ---------------------------------------------------------------------------
 async function fetchYoutubeAboutAndVideos({
   jobId,
@@ -722,11 +634,10 @@ async function fetchYoutubeAboutAndVideos({
 }) {
   const youtubeKey = channelKey(ch);
 
-  const baseUrl = makeYoutubeMainUrl(ch); // nur Basis
+  const baseUrl = makeYoutubeMainUrl(ch);
   const aboutUrl = makeYoutubeAboutUrl(ch);
   const videosUrl = makeYoutubeVideosUrl(ch);
 
-  // (1) /about laden
   emitLog(jobId, "info", "YouTube /about laden", { youtubeKey, url: aboutUrl });
 
   const aboutHtml = await fetcher.fetchText(aboutUrl);
@@ -738,7 +649,6 @@ async function fetchYoutubeAboutAndVideos({
     "/about"
   );
 
-  // DEBUG NUR TERMINAL
   debug(jobId, "about markers", {
     youtubeKey,
     aboutUrl,
@@ -750,7 +660,6 @@ async function fetchYoutubeAboutAndVideos({
     parsedCountry: aboutParsed?.channelInfo?.country ?? null,
   });
 
-  // Pause zwischen Tabs (/about -> /videos)
   const pause = pickRandomInt(switchTabMinMs, switchTabMaxMs);
   emitLog(
     jobId,
@@ -760,7 +669,6 @@ async function fetchYoutubeAboutAndVideos({
   );
   await sleep(pause);
 
-  // (2) /videos laden
   emitLog(jobId, "info", "YouTube /videos laden", {
     youtubeKey,
     url: videosUrl,
@@ -769,7 +677,6 @@ async function fetchYoutubeAboutAndVideos({
   const videosHtml = await fetcher.fetchText(videosUrl);
   const videosData = extractYtInitialData(videosHtml);
 
-  // Videos extrahieren (defensiv)
   let videos = [];
   let videosOk = false;
   let videosError = null;
@@ -789,7 +696,6 @@ async function fetchYoutubeAboutAndVideos({
     }
   }
 
-  // Fallback: Wenn /about kaputt ist, versuche ChannelInfo aus /videos
   const videosInfoParsed = parseChannelInfoSafe(
     jobId,
     youtubeKey,
@@ -818,7 +724,7 @@ async function fetchYoutubeAboutAndVideos({
 }
 
 // ---------------------------------------------------------------------------
-// 6) Einen Kanal verarbeiten (YouTube laden, extrahieren, speichern)
+// Prozess 1: Einen Kanal verarbeiten (YouTube laden, extrahieren, speichern)
 // ---------------------------------------------------------------------------
 async function processOneChannel({
   jobId,
@@ -833,11 +739,21 @@ async function processOneChannel({
   betweenChMinMs,
   betweenChMaxMs,
   videosLimit,
+
+  /**
+   * ✅ NEU:
+   * Wenn totalIsPreset=true, wurde channelsTotal bereits VORHER festgelegt.
+   * Dann darf processOneChannel() channelsTotal NICHT erhöhen,
+   * sonst stimmt Progress nicht (x/total wird "größer").
+   *
+   * - Normal HTML-Modus: totalIsPreset = false (Default)
+   * - Spezial-Modus (inputYT): totalIsPreset = true
+   */
+  totalIsPreset = false,
 }) {
   const key = channelKey(ch);
   if (!key) return;
 
-  // Duplikat vermeiden (vor YouTube-Aufruf)
   if (job.seenChannelKeys.has(key)) {
     job.progress.channelsSkippedDuplicate++;
     emitLog(jobId, "info", "Duplikat übersprungen (Vor-Schlüssel)", {
@@ -848,14 +764,19 @@ async function processOneChannel({
   }
   job.seenChannelKeys.add(key);
 
-  job.progress.channelsTotal++;
+  // ✅ FIX: channelsTotal nur erhöhen, wenn es NICHT vorher festgelegt wurde
+  if (!totalIsPreset) {
+    job.progress.channelsTotal++;
+  }
+
   job.channels.push({ ...ch, sourceFile });
 
   emitSnapshot(jobId, {
-    step: `Neuer Kanal (${job.progress.channelsDone}/${job.progress.channelsTotal})`,
+    step: `Neuer Kanal (${job.progress.channelsDone + 1}/${
+      job.progress.channelsTotal || "?"
+    })`,
   });
 
-  // YouTube laden: /about und /videos
   let ytResult = null;
 
   try {
@@ -874,7 +795,6 @@ async function processOneChannel({
     if (ytResult.videos.ok) job.progress.ytVideosOk++;
     else job.progress.ytVideosFailed++;
   } catch (err) {
-    // Captcha: YouTube blockiert automatisches Laden.
     if (
       err instanceof CaptchaDetectedError ||
       err?.name === "CaptchaDetectedError"
@@ -918,7 +838,6 @@ async function processOneChannel({
 
   if (job.status === "captcha") return;
 
-  // Optionale "KI Simulation"
   emitSnapshot(jobId, { step: "KI Simulation läuft..." });
   try {
     await simulateAiCheck({
@@ -935,13 +854,8 @@ async function processOneChannel({
     });
   }
 
-  // Daten vorbereiten für Speicherung
   const info = ytResult?.channelInfo ?? null;
-
-  // stabile Kanal-ID (UC...)
   const finalYoutubeId = info?.id ?? ch.youtubeId ?? null;
-
-  // Kanal-URL (aus channelInfo oder fallback)
   const finalYoutubeUrl = info?.url ?? ch.youtubeUrl ?? makeYoutubeMainUrl(ch);
 
   if (!finalYoutubeId) {
@@ -949,10 +863,12 @@ async function processOneChannel({
       jobId,
       "warn",
       "Keine stabile youtubeId gefunden → nicht gespeichert",
-      { youtubeKey: key, youtubeUrl: finalYoutubeUrl }
+      {
+        youtubeKey: key,
+        youtubeUrl: finalYoutubeUrl,
+      }
     );
   } else {
-    // Duplikate nach echter Kanal-ID vermeiden
     if (job.seenFinalYoutubeIds.has(finalYoutubeId)) {
       job.progress.channelsSkippedDuplicate++;
       emitLog(jobId, "info", "Duplikat nach youtubeId übersprungen", {
@@ -966,7 +882,6 @@ async function processOneChannel({
     const videosList = Array.isArray(ytResult?.videosList)
       ? ytResult.videosList
       : [];
-
     const countryValue = String(info?.country ?? "").trim() || null;
 
     const doc = {
@@ -974,7 +889,7 @@ async function processOneChannel({
       youtubeUrl: finalYoutubeUrl,
       sourceFile,
 
-      mainUrl: ytResult?.baseUrl ?? makeYoutubeMainUrl(ch), // Basis-URL (kein Fetch)
+      mainUrl: ytResult?.baseUrl ?? makeYoutubeMainUrl(ch),
       aboutUrl: ytResult?.aboutUrl ?? null,
       videosUrl: ytResult?.videosUrl ?? null,
 
@@ -1027,7 +942,6 @@ async function processOneChannel({
     }
   }
 
-  // Preview fürs Frontend (Jobs UI)
   const result = {
     youtubeId: finalYoutubeId,
     youtubeUrl: finalYoutubeUrl,
@@ -1054,10 +968,11 @@ async function processOneChannel({
 
   job.progress.channelsDone++;
   emitSnapshot(jobId, {
-    step: `Kanal fertig (${job.progress.channelsDone}/${job.progress.channelsTotal})`,
+    step: `Kanal fertig (${job.progress.channelsDone}/${
+      job.progress.channelsTotal || "?"
+    })`,
   });
 
-  // Pause zwischen Kanälen
   if (job.status !== "captcha" && job.status !== "failed") {
     const pauseMs = pickRandomInt(betweenChMinMs, betweenChMaxMs);
     emitLog(
@@ -1071,7 +986,7 @@ async function processOneChannel({
 }
 
 // ---------------------------------------------------------------------------
-// Job runner Prozess 1 (HTML → DB)
+// Job runner Prozess 1 (SB Input → DB)
 // ---------------------------------------------------------------------------
 async function runJob(jobId) {
   const job = jobs.get(jobId);
@@ -1088,8 +1003,21 @@ async function runJob(jobId) {
     return;
   }
 
+  // ✅ inputMode IMMER als erstes lesen (entscheidet Default-InputDir)
+  const inputMode = String(job.options?.inputMode || "sb-html").toLowerCase();
+
+  /**
+   * ✅ FIX: Default inputDir hängt vom inputMode ab
+   * - sb-html    -> DEFAULT_INPUT_DIR (/input)
+   * - sb-special -> DEFAULT_INPUT_YT_DIR (/inputYT)
+   *
+   * Wenn der Client explizit inputDir sendet, überschreibt er das.
+   * (Aber eigentlich brauchst du das nicht mehr, wenn Default korrekt ist.)
+   */
   const inputDir = job.options?.inputDir
     ? path.resolve(job.options.inputDir)
+    : inputMode === "sb-special"
+    ? DEFAULT_INPUT_YT_DIR
     : DEFAULT_INPUT_DIR;
 
   const fetchOptions = {
@@ -1132,7 +1060,8 @@ async function runJob(jobId) {
       ? Math.max(1, Math.floor(job.options.videosLimit))
       : VIDEOS_LIMIT_DEFAULT;
 
-  emitLog(jobId, "info", "Job gestartet (HTML → DB)", {
+  emitLog(jobId, "info", "Job gestartet (Input → DB)", {
+    inputMode,
     inputDir,
     fetchOptions,
     switchTabMinMs,
@@ -1147,6 +1076,90 @@ async function runJob(jobId) {
   emitSnapshot(jobId, { step: "Starte Job" });
 
   try {
+    // --------------------------------------------------------------------
+    // FALL 1: Spezial-Modus (inputYT: SocialBlade-Linklisten)
+    // --------------------------------------------------------------------
+    if (inputMode === "sb-special") {
+      emitSnapshot(jobId, {
+        step: "Spezial: Lese SocialBlade Linklisten (inputYT)",
+      });
+
+      // 1) Channels aus Textdateien laden (inputYT)
+      const { channels, summary } = await loadChannelsFromSbLinkFolder({
+        dirPath: inputDir,
+        emitLog,
+        jobId,
+      });
+
+      // Für UI/Logs:
+      job.progress.htmlFilesFound = summary.filesCount;
+      job.progress.htmlFilesParsed = summary.filesCount;
+
+      emitLog(jobId, "info", "Spezial-Input geladen", summary);
+
+      if (!channels.length) {
+        job.status = "done";
+        job.finishedAt = nowIso();
+        emitSnapshot(jobId, {
+          step: "Fertig (0 Channels aus inputYT)",
+          stats: { ...job.progress },
+        });
+        return;
+      }
+
+      const fetcher = createSafeFetcher({
+        ...fetchOptions,
+        stopOnCaptcha: true,
+        hostRules: {
+          "www.youtube.com": { minIntervalMs: 4500, jitterMs: 1200 },
+          "youtube.com": { minIntervalMs: 4500, jitterMs: 1200 },
+        },
+        onEvent: (ev) =>
+          emitLog(jobId, "info", `Fetch Ereignis: ${ev.type}`, ev),
+      });
+
+      emitSnapshot(jobId, { step: "Spezial: Starte Verarbeitung (inputYT)" });
+
+      // ✅ IMPORTANT: total VORHER setzen, und später nicht mehr hochzählen
+      job.progress.channelsTotal = channels.length;
+      job.progress.channelsDone = 0;
+
+      for (const ch of channels) {
+        if (job.status === "captcha") break;
+
+        await processOneChannel({
+          jobId,
+          job,
+          fetcher,
+          ch,
+          sourceFile: "inputYT",
+          switchTabMinMs,
+          switchTabMaxMs,
+          aiMinMs,
+          aiMaxMs,
+          betweenChMinMs,
+          betweenChMaxMs,
+          videosLimit,
+
+          // ✅ FIX: total wurde preset
+          totalIsPreset: true,
+        });
+      }
+
+      if (job.status !== "captcha") {
+        job.status = "done";
+        job.finishedAt = nowIso();
+        const stats = { ...job.progress };
+        emitLog(jobId, "info", "Job fertig (Spezial inputYT → DB)", stats);
+        emitSnapshot(jobId, { step: "Job fertig (inputYT)", stats });
+      }
+
+      return;
+    }
+
+    // --------------------------------------------------------------------
+    // FALL 2: Normal-Modus (input: SocialBlade HTML-Dateien)
+    // --------------------------------------------------------------------
     emitSnapshot(jobId, { step: "Suche HTML Dateien" });
 
     const htmlFiles = await findHtmlFiles(inputDir);
@@ -1215,6 +1228,7 @@ async function runJob(jobId) {
           betweenChMinMs,
           betweenChMaxMs,
           videosLimit,
+          // totalIsPreset bleibt false (Default) => total wächst dynamisch
         });
       }
 
@@ -1259,25 +1273,21 @@ async function runJobVorgefiltertToCode(jobId) {
 
   const options = job.options || {};
 
-  // Deutsch-Wortliste
   const deutschArray =
     Array.isArray(options.deutschArray) && options.deutschArray.length
       ? options.deutschArray
       : DEUTSCH_WORDS_ARRAY;
 
-  // BadChar-Liste
   const badCharArray =
     Array.isArray(options.badCharArray) && options.badCharArray.length
       ? options.badCharArray
       : NON_GERMAN_UNICODE_CHARS;
 
-  // ✅ NEU: distinct BadChars pro Feld
   const maxBadCharsDistinctPerField =
     typeof options.maxBadCharsDistinctPerField === "number"
       ? Math.max(0, Math.floor(options.maxBadCharsDistinctPerField))
       : DEFAULT_MAX_BAD_CHARS_DISTINCT_PER_FIELD;
 
-  // ✅ NEU: min distinct deutsche Wörter über gesamten Kanaltext
   const minDistinctGermanWordsTotal =
     typeof options.minDistinctGermanWordsTotal === "number"
       ? Math.max(0, Math.floor(options.minDistinctGermanWordsTotal))
@@ -1285,7 +1295,7 @@ async function runJobVorgefiltertToCode(jobId) {
 
   const dryRun = Boolean(options.dryRun);
 
-  // limit=0 bedeutet: alle
+  // limit: wie viele Docs maximal prüfen (0 oder nicht gesetzt => ALL)
   const limit =
     typeof options.limit === "number"
       ? Math.max(0, Math.floor(options.limit))
@@ -1306,11 +1316,9 @@ async function runJobVorgefiltertToCode(jobId) {
     const totalDocs = await Vorgefiltert.countDocuments();
     const totalPlanned = limit ? Math.min(limit, totalDocs) : totalDocs;
 
-    // UI progress
     job.progress.channelsTotal = totalPlanned;
     job.progress.channelsDone = 0;
 
-    // Counter Prozess 2
     job.progress.scanned = 0;
     job.progress.passedCountry = 0;
     job.progress.passedLanguage = 0;
@@ -1318,29 +1326,27 @@ async function runJobVorgefiltertToCode(jobId) {
     job.progress.skippedNotDeutschland = 0;
     job.progress.skippedNotGerman = 0;
     job.progress.skippedBadChars = 0;
+    job.progress.skippedKidsHard = 0;
     job.progress.errors = 0;
 
-    // Cursor: speicherschonend
-    const cursor = Vorgefiltert.find({}).sort({ _id: 1 }).cursor();
+    // ✅ FIX: limit direkt in Mongo Query anwenden (performanter als "break" im Loop)
+    let q = Vorgefiltert.find({}).sort({ _id: 1 });
+    if (limit) q = q.limit(limit);
+
+    const cursor = q.cursor();
 
     for await (const doc of cursor) {
       job.progress.scanned++;
-
-      if (limit && job.progress.scanned > limit) break;
-
-      // Fortschritt fürs UI
       job.progress.channelsDone = job.progress.scanned;
 
-      // Regel 1: Country
+      // 1) Country-Check
       if (!isCountryDeutschland(doc)) {
         job.progress.skippedNotDeutschland++;
         continue;
       }
       job.progress.passedCountry++;
 
-      // ------------------------------------------------------------
-      // Regel 2 (NEU, zuerst): NON_GERMAN_UNICODE_CHARS (distinct pro Feld)
-      // ------------------------------------------------------------
+      // 2) BadChars-Check (distinct pro Feld)
       const nonGermanRes = nonGermanCharsDistinctPerFieldCheck(
         doc,
         badCharArray,
@@ -1350,7 +1356,6 @@ async function runJobVorgefiltertToCode(jobId) {
       if (!nonGermanRes.ok) {
         job.progress.skippedBadChars++;
 
-        // sehr transparent: wo & welche Zeichen
         emitLog(
           jobId,
           "info",
@@ -1365,9 +1370,7 @@ async function runJobVorgefiltertToCode(jobId) {
         continue;
       }
 
-      // ------------------------------------------------------------
-      // Regel 3 (NEU, danach): DEUTSCH_WORDS_ARRAY (distinct über gesamten Kanaltext)
-      // ------------------------------------------------------------
+      // 3) DeutschWords-Check
       const germanRes = germanWordsDistinctTotalCheck(
         doc,
         deutschArray,
@@ -1376,7 +1379,6 @@ async function runJobVorgefiltertToCode(jobId) {
 
       if (!germanRes.ok) {
         job.progress.skippedNotGerman++;
-
         emitLog(
           jobId,
           "info",
@@ -1388,14 +1390,52 @@ async function runJobVorgefiltertToCode(jobId) {
             wordsFoundSample: germanRes.wordsFoundSample,
           }
         );
+        continue;
+      }
+
+      // 4) Kids-Inhalt Check (kommt NACH DeutschWords)
+      //
+      // Bedeutung:
+      // - Wenn >= kidsDistinctThreshold VERSCHIEDENE Kids-Phrasen gefunden wurden
+      //   => Kanal wird rausgefiltert.
+      //
+      // Default 2 heißt:
+      // - 0 oder 1 unterschiedliche Kids-Phrase => ok
+      // - 2 oder mehr unterschiedliche Kids-Phrasen => reject
+      const kidsDistinctThreshold =
+        typeof options.kidsHardDistinctThreshold === "number"
+          ? Math.max(0, Math.floor(options.kidsHardDistinctThreshold))
+          : 2;
+
+      const kidsRes = kidsHardPhrasesCheck(
+        doc,
+        KIDS_HARD_PHRASES,
+        kidsDistinctThreshold,
+        { maxSamplesPerField: 3 }
+      );
+
+      if (!kidsRes.ok) {
+        job.progress.skippedKidsHard++;
+
+        emitLog(
+          jobId,
+          "info",
+          "Skip: Kids-Inhalt (KIDS_HARD_PHRASES) – zu viele Treffer (distinct)",
+          {
+            youtubeId: doc.youtubeId,
+            hitsDistinct: kidsRes.hitsDistinct,
+            rejectIfDistinctGte: kidsDistinctThreshold,
+            hitsTotal: kidsRes.hitsTotal,
+            matches: kidsRes.matches.slice(0, 25), // Log begrenzen
+          }
+        );
 
         continue;
       }
 
-      // Wenn bis hier ok: "Language passed"
+      // Wenn bis hier ok: "Language passed" (Name bleibt, damit nichts kaputt geht)
       job.progress.passedLanguage++;
 
-      // Wenn Regeln bestanden: in neue Collection schreiben
       if (!dryRun) {
         const outDoc = {
           youtubeId: doc.youtubeId,
@@ -1414,28 +1454,46 @@ async function runJobVorgefiltertToCode(jobId) {
 
           extractedAt: doc.extractedAt,
 
-          // ✅ super wichtig: damit du im UI/DB nachvollziehen kannst, warum drin
           codeCheck: {
             checkedAt: new Date(),
+
+            // passedRules soll für Menschen lesbar sein:
+            // Wir schreiben jetzt bei Kids klar dazu, dass es ein "rejectIfDistinctGte" ist.
             passedRules: [
               "country=Deutschland",
               `nonGermanDistinctPerField<=${maxBadCharsDistinctPerField}`,
               `deutschWordsDistinctTotal>=${minDistinctGermanWordsTotal}`,
+              `kidsHardRejectIfDistinctGte=${kidsDistinctThreshold} (found=${kidsRes.hitsDistinct})`,
             ],
+
+            // bleibt leer, weil wir nur "passed" Dokumente speichern.
+            // (Alles andere skippen wir vorher.)
             failedReason: "",
 
-            // Report NON_GERMAN_UNICODE_CHARS:
-            // wo/welche Zeichen gefunden wurden (auch wenn ok)
             nonGermanCheck: {
               maxDistinctPerField: nonGermanRes.maxDistinctPerField,
               matches: nonGermanRes.matches,
             },
 
-            // Report deutsche Wörter:
             germanCheck: {
               minDistinct: germanRes.minDistinct,
               hitsDistinct: germanRes.hitsDistinct,
               wordsFoundSample: germanRes.wordsFoundSample,
+            },
+
+            kidsHardCheck: {
+              // sehr klar, damit du später nicht verwirrt bist:
+              rule: {
+                rejectIfDistinctGte: kidsDistinctThreshold,
+                passIfDistinctLt: kidsDistinctThreshold,
+              },
+
+              distinctThreshold: kidsRes.distinctThreshold,
+              hitsDistinct: kidsRes.hitsDistinct,
+              hitsTotal: kidsRes.hitsTotal,
+
+              // Matches enthält: phrase, hitsTotalInChannel, fields[{field,count,samples}]
+              matches: kidsRes.matches,
             },
           },
         };
@@ -1449,7 +1507,6 @@ async function runJobVorgefiltertToCode(jobId) {
 
       job.progress.saved++;
 
-      // Snapshot sparsam: alle 25 docs
       if (job.progress.scanned % 25 === 0) {
         emitSnapshot(jobId, {
           step: `Scanne & filtere (${job.progress.scanned}/${totalPlanned})`,
@@ -1627,10 +1684,6 @@ app.get("/api/collections", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Collection-Liste / Details (für beide Collections)
-// ---------------------------------------------------------------------------
-
 function getCollectionModelByName(name) {
   if (name === "vorgefiltert") return Vorgefiltert;
   if (name === "vorgefiltertCode") return VorgefiltertCode;
@@ -1640,8 +1693,6 @@ function getCollectionModelByName(name) {
 /**
  * GET /api/collection/:name?limit=100&skip=0&q=...
  * -> LISTE (schnell, ohne videos + ohne description)
- *
- * Wir selektieren bewusst nur kleine channelInfo-Felder.
  */
 app.get("/api/collection/:name", async (req, res) => {
   try {
@@ -1685,7 +1736,6 @@ app.get("/api/collection/:name", async (req, res) => {
         youtubeUrl: 1,
         sourceFile: 1,
 
-        // kleine channelInfo Felder (ohne description)
         "channelInfo.id": 1,
         "channelInfo.title": 1,
         "channelInfo.handle": 1,
@@ -1699,7 +1749,6 @@ app.get("/api/collection/:name", async (req, res) => {
         extractedAt: 1,
         createdAt: 1,
 
-        // nur in vorgefiltertCode interessant
         codeCheck: 1,
       })
       .lean();
@@ -1761,7 +1810,7 @@ app.get("/api/collection/:name/item/:youtubeId", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Statische Dateien (CSS, JS, index.html, etc.)
+// Statische Dateien
 // ---------------------------------------------------------------------------
 app.use(express.static(PUBLIC_DIR));
 
