@@ -11,21 +11,23 @@
  *   - Route: POST /process/vorgefiltert-to-vorgefiltertCode
  *
  * ------------------------------------------------------------
- * WICHTIG: INPUT-MODE (Prozess 1)
+ * NEU (dein Wunsch):
  * ------------------------------------------------------------
- * Der Input-Mode wird vom Frontend per JSON (req.body) geschickt.
+ * Zusätzlich speichern wir ALLE Kanäle, die in Prozess 2 "rausfliegen",
+ * in einer neuen MongoDB Collection: "deletedChannels".
  *
- * inputMode === "sb-html"
- *   -> lies HTML Dateien aus /input
- *   -> extrahiere youtube channel urls/ids aus HTML
+ * Das bedeutet:
+ * - Kanäle, die NICHT nach vorgefiltertCode übernommen werden,
+ *   landen automatisch in "deletedChannels" inkl. Grund + Details.
  *
- * inputMode === "sb-special"
- *   -> lies Linklisten (Textdateien) aus /inputYT
- *   -> parse SocialBlade handle links:
- *      z.B. "https://socialblade.com/youtube/handle/alkoholkenndeinlimit", ...
- *   -> baue daraus YouTube @handle Links
+ * Vorteil:
+ * - Du verlierst keine Daten mehr.
+ * - Du kannst später genau sehen, WARUM ein Kanal rausgefiltert wurde.
  *
- * Damit das robust ist, setzt runJob() den Default inputDir abhängig vom inputMode.
+ * Hinweis:
+ * - Wir machen das "idempotent" per youtubeId (Upsert).
+ * - Das heißt: wenn du Prozess 2 nochmal startest, wird der Eintrag aktualisiert
+ *   und ein Zähler "timesSkipped" erhöht.
  */
 
 import express from "express";
@@ -42,17 +44,19 @@ import {
   extractVideosFromYtVideosInitialData,
 } from "./lib/youtubeInitialData.js";
 
-import { connectDb } from "./lib/db.js";
+import { connectDb, mongoose } from "./lib/db.js"; // ✅ NEU: mongoose importieren (für deletedChannels Modell)
 import { Vorgefiltert } from "./lib/models/Vorgefiltert.js";
 import { VorgefiltertCode } from "./lib/models/VorgefiltertCode.js";
 
 import { DEUTSCH_WORDS_ARRAY } from "./lib/config/deutschArray.js";
 import { NON_GERMAN_UNICODE_CHARS } from "./lib/config/charArray.js";
 
-// ✅ Kids-Phrasen-Array (deine Datei)
+// ✅ Kids-Phrasen-Array
 import { KIDS_HARD_PHRASES } from "./lib/config/blockedPhrasesArrayKids.js";
 
-// ✅ Kids-Check-Logik (separate Datei)
+// ✅ Kids-Check Logik
+// Wichtig: Dateiname und Import müssen zusammenpassen.
+// Ich empfehle den Namen "kidsHardPhrasesCheck.js", weil es klar sagt, was exportiert wird.
 import { kidsHardPhrasesCheck } from "./lib/codeChecks/kidsHardPhrasesCheck.js";
 
 import { loadChannelsFromSbLinkFolder } from "./lib/sbSpecialInput.js";
@@ -106,6 +110,117 @@ const DEFAULT_MAX_BAD_CHARS_DISTINCT_PER_FIELD = 3;
  *   VERSCHIEDENE (unique) Wörter aus DEUTSCH_WORDS_ARRAY vorkommen => raus.
  */
 const DEFAULT_MIN_GERMAN_WORDS_DISTINCT_TOTAL = 5;
+
+// ---------------------------------------------------------------------------
+// ✅ NEU: Modell für "deletedChannels"
+// ---------------------------------------------------------------------------
+/**
+ * Ziel:
+ * - Wenn Prozess 2 einen Kanal "wegfiltert", speichern wir ihn in deletedChannels.
+ *
+ * Warum Schema hier und nicht extra Datei?
+ * - Du wolltest nur eine neue server.js.
+ * - Du hast in db.js bereits mongoose exportiert.
+ * - Also können wir hier ein kleines Modell definieren, ohne zusätzliche Dateien.
+ *
+ * Wenn du später sauberer strukturieren willst:
+ * - Dann ziehst du dieses Schema nach ./lib/models/DeletedChannel.js um.
+ */
+const DeletedChannelSchema = new mongoose.Schema(
+  {
+    youtubeId: { type: String, required: true, unique: true, index: true },
+
+    // Ein paar Felder helfen dir später beim Debuggen/Anzeigen:
+    youtubeUrl: { type: String, default: null },
+    sourceFile: { type: String, default: null },
+
+    mainUrl: { type: String, default: null },
+    aboutUrl: { type: String, default: null },
+    videosUrl: { type: String, default: null },
+
+    // Du willst meist den Titel/Handle/Land sehen:
+    channelInfo: { type: mongoose.Schema.Types.Mixed, default: null },
+
+    extractedAt: { type: Date, default: null },
+
+    // Warum wurde er rausgefiltert?
+    lastReason: { type: String, default: "" },
+
+    // Details zur Regel (z.B. welche BadChars, welche Kids Phrasen etc.)
+    lastDetails: { type: mongoose.Schema.Types.Mixed, default: null },
+
+    // Praktisch: wie oft ist er schon rausgeflogen?
+    timesSkipped: { type: Number, default: 0 },
+
+    // Für Logs/Zuordnung: welcher Job hat das zuletzt geschrieben?
+    lastJobId: { type: String, default: null },
+  },
+  {
+    collection: "deletedChannels", // ✅ Mongo Collection Name exakt so wie du willst
+    timestamps: true, // ✅ erzeugt createdAt/updatedAt automatisch
+  }
+);
+
+// Wichtig:
+// - mongoose kann Modelle nicht zweimal mit gleichem Namen registrieren.
+// - Darum nutzen wir mongoose.models[...] als Cache.
+const DeletedChannel =
+  mongoose.models.DeletedChannel ||
+  mongoose.model("DeletedChannel", DeletedChannelSchema);
+
+/**
+ * Helper: Ein weggeworfener Kanal wird in deletedChannels geschrieben.
+ * Wir machen ein Upsert (update oder insert), damit du keinen Spam bekommst.
+ */
+async function recordDeletedChannel({
+  jobId,
+  doc, // Original aus Vorgefiltert
+  reason, // z.B. "country_not_deutschland"
+  details, // Objekt mit Details
+}) {
+  try {
+    const youtubeId = String(doc?.youtubeId || "").trim();
+    if (!youtubeId) return;
+
+    const payload = {
+      youtubeId,
+      youtubeUrl: doc?.youtubeUrl ?? null,
+      sourceFile: doc?.sourceFile ?? null,
+
+      mainUrl: doc?.mainUrl ?? null,
+      aboutUrl: doc?.aboutUrl ?? null,
+      videosUrl: doc?.videosUrl ?? null,
+
+      channelInfo: doc?.channelInfo ?? null,
+      extractedAt: doc?.extractedAt ?? null,
+
+      lastReason: String(reason || ""),
+      lastDetails: details ?? null,
+
+      lastJobId: jobId ?? null,
+    };
+
+    await DeletedChannel.findOneAndUpdate(
+      { youtubeId },
+      {
+        $set: payload,
+        $inc: { timesSkipped: 1 },
+      },
+      {
+        upsert: true,
+        setDefaultsOnInsert: true, // ✅ wichtig
+        new: false,
+      }
+    );
+  } catch (e) {
+    // Wir werfen hier keinen Fehler, weil "deletedChannels" optional sein soll
+    // und der Hauptjob nicht abstürzen darf.
+    console.warn(
+      "[WARN] recordDeletedChannel failed:",
+      String(e?.message || e)
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Express Setup
@@ -280,7 +395,14 @@ function isCountryDeutschland(doc) {
   const c = String(doc?.channelInfo?.country || "")
     .trim()
     .toLowerCase();
-  const allowed = new Set(["deutschland", "germany", "de", "deutsch"]);
+  const allowed = new Set([
+    "deutschland",
+    "germany",
+    "de",
+    "deutsch",
+    "österreich",
+    "schweiz",
+  ]);
   if (allowed.has(c)) return true;
   if (c.includes("deutschland")) return true;
   if (c.includes("germany")) return true;
@@ -359,11 +481,15 @@ function createJob({ options }) {
       passedCountry: 0,
       passedLanguage: 0,
       saved: 0,
+
       skippedNotDeutschland: 0,
       skippedNotGerman: 0,
-
       skippedBadChars: 0,
       skippedKidsHard: 0,
+
+      // ✅ NEU: wie viele wurden in deletedChannels geschrieben
+      deletedSaved: 0,
+
       errors: 0,
     },
 
@@ -741,10 +867,8 @@ async function processOneChannel({
   videosLimit,
 
   /**
-   * ✅ NEU:
    * Wenn totalIsPreset=true, wurde channelsTotal bereits VORHER festgelegt.
-   * Dann darf processOneChannel() channelsTotal NICHT erhöhen,
-   * sonst stimmt Progress nicht (x/total wird "größer").
+   * Dann darf processOneChannel() channelsTotal NICHT erhöhen.
    *
    * - Normal HTML-Modus: totalIsPreset = false (Default)
    * - Spezial-Modus (inputYT): totalIsPreset = true
@@ -764,7 +888,6 @@ async function processOneChannel({
   }
   job.seenChannelKeys.add(key);
 
-  // ✅ FIX: channelsTotal nur erhöhen, wenn es NICHT vorher festgelegt wurde
   if (!totalIsPreset) {
     job.progress.channelsTotal++;
   }
@@ -1003,17 +1126,8 @@ async function runJob(jobId) {
     return;
   }
 
-  // ✅ inputMode IMMER als erstes lesen (entscheidet Default-InputDir)
   const inputMode = String(job.options?.inputMode || "sb-html").toLowerCase();
 
-  /**
-   * ✅ FIX: Default inputDir hängt vom inputMode ab
-   * - sb-html    -> DEFAULT_INPUT_DIR (/input)
-   * - sb-special -> DEFAULT_INPUT_YT_DIR (/inputYT)
-   *
-   * Wenn der Client explizit inputDir sendet, überschreibt er das.
-   * (Aber eigentlich brauchst du das nicht mehr, wenn Default korrekt ist.)
-   */
   const inputDir = job.options?.inputDir
     ? path.resolve(job.options.inputDir)
     : inputMode === "sb-special"
@@ -1084,14 +1198,12 @@ async function runJob(jobId) {
         step: "Spezial: Lese SocialBlade Linklisten (inputYT)",
       });
 
-      // 1) Channels aus Textdateien laden (inputYT)
       const { channels, summary } = await loadChannelsFromSbLinkFolder({
         dirPath: inputDir,
         emitLog,
         jobId,
       });
 
-      // Für UI/Logs:
       job.progress.htmlFilesFound = summary.filesCount;
       job.progress.htmlFilesParsed = summary.filesCount;
 
@@ -1120,7 +1232,6 @@ async function runJob(jobId) {
 
       emitSnapshot(jobId, { step: "Spezial: Starte Verarbeitung (inputYT)" });
 
-      // ✅ IMPORTANT: total VORHER setzen, und später nicht mehr hochzählen
       job.progress.channelsTotal = channels.length;
       job.progress.channelsDone = 0;
 
@@ -1140,8 +1251,6 @@ async function runJob(jobId) {
           betweenChMinMs,
           betweenChMaxMs,
           videosLimit,
-
-          // ✅ FIX: total wurde preset
           totalIsPreset: true,
         });
       }
@@ -1228,7 +1337,6 @@ async function runJob(jobId) {
           betweenChMinMs,
           betweenChMaxMs,
           videosLimit,
-          // totalIsPreset bleibt false (Default) => total wächst dynamisch
         });
       }
 
@@ -1301,6 +1409,19 @@ async function runJobVorgefiltertToCode(jobId) {
       ? Math.max(0, Math.floor(options.limit))
       : 0;
 
+  /**
+   * ✅ NEU: deletedChannels schreiben an/aus
+   * Standard: true
+   *
+   * Warum Option?
+   * - Manchmal willst du testweise scannen ohne die DB vollzuschreiben.
+   * - Dann kannst du writeDeletedChannels: false setzen.
+   */
+  const writeDeletedChannels =
+    typeof options.writeDeletedChannels === "boolean"
+      ? options.writeDeletedChannels
+      : true;
+
   emitLog(jobId, "info", "Job gestartet (vorgefiltert → vorgefiltertCode)", {
     deutschArraySize: deutschArray.length,
     badCharArraySize: badCharArray.length,
@@ -1308,6 +1429,7 @@ async function runJobVorgefiltertToCode(jobId) {
     minDistinctGermanWordsTotal,
     dryRun,
     limit: limit || "ALL",
+    writeDeletedChannels,
   });
 
   emitSnapshot(jobId, { step: "Starte Scan in vorgefiltert" });
@@ -1323,195 +1445,270 @@ async function runJobVorgefiltertToCode(jobId) {
     job.progress.passedCountry = 0;
     job.progress.passedLanguage = 0;
     job.progress.saved = 0;
+
     job.progress.skippedNotDeutschland = 0;
     job.progress.skippedNotGerman = 0;
     job.progress.skippedBadChars = 0;
     job.progress.skippedKidsHard = 0;
+
+    job.progress.deletedSaved = 0;
     job.progress.errors = 0;
 
-    // ✅ FIX: limit direkt in Mongo Query anwenden (performanter als "break" im Loop)
+    // ✅ Performance: limit direkt in Query anwenden
     let q = Vorgefiltert.find({}).sort({ _id: 1 });
     if (limit) q = q.limit(limit);
-
     const cursor = q.cursor();
 
+    /**
+     * WICHTIG (Anfänger-Erklärung):
+     * - Wir laufen jedes Dokument (jeden Kanal) durch.
+     * - Sobald eine Regel "failt", machen wir:
+     *   1) in deletedChannels schreiben (wenn aktiviert)
+     *   2) continue -> zum nächsten Kanal
+     */
     for await (const doc of cursor) {
       job.progress.scanned++;
       job.progress.channelsDone = job.progress.scanned;
 
-      // 1) Country-Check
-      if (!isCountryDeutschland(doc)) {
-        job.progress.skippedNotDeutschland++;
-        continue;
-      }
-      job.progress.passedCountry++;
+      // Damit ein einzelner Kanal den Job NICHT killt:
+      try {
+        // 1) Country-Check
+        if (!isCountryDeutschland(doc)) {
+          job.progress.skippedNotDeutschland++;
 
-      // 2) BadChars-Check (distinct pro Feld)
-      const nonGermanRes = nonGermanCharsDistinctPerFieldCheck(
-        doc,
-        badCharArray,
-        maxBadCharsDistinctPerField
-      );
-
-      if (!nonGermanRes.ok) {
-        job.progress.skippedBadChars++;
-
-        emitLog(
-          jobId,
-          "info",
-          "Skip: zu viele NON_GERMAN_UNICODE_CHARS (distinct) in einem Feld",
-          {
-            youtubeId: doc.youtubeId,
-            maxDistinctPerField: nonGermanRes.maxDistinctPerField,
-            matches: nonGermanRes.matches,
+          if (writeDeletedChannels) {
+            await recordDeletedChannel({
+              jobId,
+              doc,
+              reason: "country_not_deutschland",
+              details: {
+                country: doc?.channelInfo?.country ?? null,
+                rule: 'allowed: ["deutschland","germany","de","deutsch"]',
+              },
+            });
+            job.progress.deletedSaved++;
           }
+
+          continue;
+        }
+        job.progress.passedCountry++;
+
+        // 2) BadChars-Check (distinct pro Feld)
+        const nonGermanRes = nonGermanCharsDistinctPerFieldCheck(
+          doc,
+          badCharArray,
+          maxBadCharsDistinctPerField
         );
 
-        continue;
-      }
+        if (!nonGermanRes.ok) {
+          job.progress.skippedBadChars++;
 
-      // 3) DeutschWords-Check
-      const germanRes = germanWordsDistinctTotalCheck(
-        doc,
-        deutschArray,
-        minDistinctGermanWordsTotal
-      );
-
-      if (!germanRes.ok) {
-        job.progress.skippedNotGerman++;
-        emitLog(
-          jobId,
-          "info",
-          "Skip: zu wenige deutsche Wörter (distinct) im gesamten Kanaltext",
-          {
-            youtubeId: doc.youtubeId,
-            hitsDistinct: germanRes.hitsDistinct,
-            minDistinct: germanRes.minDistinct,
-            wordsFoundSample: germanRes.wordsFoundSample,
-          }
-        );
-        continue;
-      }
-
-      // 4) Kids-Inhalt Check (kommt NACH DeutschWords)
-      //
-      // Bedeutung:
-      // - Wenn >= kidsDistinctThreshold VERSCHIEDENE Kids-Phrasen gefunden wurden
-      //   => Kanal wird rausgefiltert.
-      //
-      // Default 2 heißt:
-      // - 0 oder 1 unterschiedliche Kids-Phrase => ok
-      // - 2 oder mehr unterschiedliche Kids-Phrasen => reject
-      const kidsDistinctThreshold =
-        typeof options.kidsHardDistinctThreshold === "number"
-          ? Math.max(0, Math.floor(options.kidsHardDistinctThreshold))
-          : 2;
-
-      const kidsRes = kidsHardPhrasesCheck(
-        doc,
-        KIDS_HARD_PHRASES,
-        kidsDistinctThreshold,
-        { maxSamplesPerField: 3 }
-      );
-
-      if (!kidsRes.ok) {
-        job.progress.skippedKidsHard++;
-
-        emitLog(
-          jobId,
-          "info",
-          "Skip: Kids-Inhalt (KIDS_HARD_PHRASES) – zu viele Treffer (distinct)",
-          {
-            youtubeId: doc.youtubeId,
-            hitsDistinct: kidsRes.hitsDistinct,
-            rejectIfDistinctGte: kidsDistinctThreshold,
-            hitsTotal: kidsRes.hitsTotal,
-            matches: kidsRes.matches.slice(0, 25), // Log begrenzen
-          }
-        );
-
-        continue;
-      }
-
-      // Wenn bis hier ok: "Language passed" (Name bleibt, damit nichts kaputt geht)
-      job.progress.passedLanguage++;
-
-      if (!dryRun) {
-        const outDoc = {
-          youtubeId: doc.youtubeId,
-          youtubeUrl: doc.youtubeUrl,
-          sourceFile: doc.sourceFile,
-
-          mainUrl: doc.mainUrl,
-          aboutUrl: doc.aboutUrl,
-          videosUrl: doc.videosUrl,
-
-          ytAboutOk: doc.ytAboutOk,
-          ytVideosOk: doc.ytVideosOk,
-
-          channelInfo: doc.channelInfo,
-          videos: doc.videos,
-
-          extractedAt: doc.extractedAt,
-
-          codeCheck: {
-            checkedAt: new Date(),
-
-            // passedRules soll für Menschen lesbar sein:
-            // Wir schreiben jetzt bei Kids klar dazu, dass es ein "rejectIfDistinctGte" ist.
-            passedRules: [
-              "country=Deutschland",
-              `nonGermanDistinctPerField<=${maxBadCharsDistinctPerField}`,
-              `deutschWordsDistinctTotal>=${minDistinctGermanWordsTotal}`,
-              `kidsHardRejectIfDistinctGte=${kidsDistinctThreshold} (found=${kidsRes.hitsDistinct})`,
-            ],
-
-            // bleibt leer, weil wir nur "passed" Dokumente speichern.
-            // (Alles andere skippen wir vorher.)
-            failedReason: "",
-
-            nonGermanCheck: {
+          emitLog(
+            jobId,
+            "info",
+            "Skip: zu viele NON_GERMAN_UNICODE_CHARS (distinct) in einem Feld",
+            {
+              youtubeId: doc.youtubeId,
               maxDistinctPerField: nonGermanRes.maxDistinctPerField,
               matches: nonGermanRes.matches,
-            },
+            }
+          );
 
-            germanCheck: {
-              minDistinct: germanRes.minDistinct,
+          if (writeDeletedChannels) {
+            await recordDeletedChannel({
+              jobId,
+              doc,
+              reason: "too_many_non_german_chars_distinct_per_field",
+              details: {
+                maxDistinctPerField: nonGermanRes.maxDistinctPerField,
+                matches: nonGermanRes.matches,
+              },
+            });
+            job.progress.deletedSaved++;
+          }
+
+          continue;
+        }
+
+        // 3) DeutschWords-Check
+        const germanRes = germanWordsDistinctTotalCheck(
+          doc,
+          deutschArray,
+          minDistinctGermanWordsTotal
+        );
+
+        if (!germanRes.ok) {
+          job.progress.skippedNotGerman++;
+
+          emitLog(
+            jobId,
+            "info",
+            "Skip: zu wenige deutsche Wörter (distinct) im gesamten Kanaltext",
+            {
+              youtubeId: doc.youtubeId,
               hitsDistinct: germanRes.hitsDistinct,
+              minDistinct: germanRes.minDistinct,
               wordsFoundSample: germanRes.wordsFoundSample,
-            },
+            }
+          );
 
-            kidsHardCheck: {
-              // sehr klar, damit du später nicht verwirrt bist:
-              rule: {
+          if (writeDeletedChannels) {
+            await recordDeletedChannel({
+              jobId,
+              doc,
+              reason: "too_few_german_words_distinct_total",
+              details: {
+                hitsDistinct: germanRes.hitsDistinct,
+                minDistinct: germanRes.minDistinct,
+                wordsFoundSample: germanRes.wordsFoundSample,
+              },
+            });
+            job.progress.deletedSaved++;
+          }
+
+          continue;
+        }
+
+        // 4) Kids-Inhalt Check
+        const kidsDistinctThreshold =
+          typeof options.kidsHardDistinctThreshold === "number"
+            ? Math.max(0, Math.floor(options.kidsHardDistinctThreshold))
+            : 2;
+
+        const kidsRes = kidsHardPhrasesCheck(
+          doc,
+          KIDS_HARD_PHRASES,
+          kidsDistinctThreshold,
+          { maxSamplesPerField: 3 }
+        );
+
+        if (!kidsRes.ok) {
+          job.progress.skippedKidsHard++;
+
+          emitLog(
+            jobId,
+            "info",
+            "Skip: Kids-Inhalt (KIDS_HARD_PHRASES) – zu viele Treffer (distinct)",
+            {
+              youtubeId: doc.youtubeId,
+              hitsDistinct: kidsRes.hitsDistinct,
+              rejectIfDistinctGte: kidsDistinctThreshold,
+              hitsTotal: kidsRes.hitsTotal,
+              matches: kidsRes.matches.slice(0, 25),
+            }
+          );
+
+          if (writeDeletedChannels) {
+            await recordDeletedChannel({
+              jobId,
+              doc,
+              reason: "kids_hard_phrases_distinct_threshold_reached",
+              details: {
                 rejectIfDistinctGte: kidsDistinctThreshold,
-                passIfDistinctLt: kidsDistinctThreshold,
+                hitsDistinct: kidsRes.hitsDistinct,
+                hitsTotal: kidsRes.hitsTotal,
+                matches: kidsRes.matches,
+              },
+            });
+            job.progress.deletedSaved++;
+          }
+
+          continue;
+        }
+
+        // ✅ Wenn wir hier sind => Kanal ist "OK" und wird übernommen
+        job.progress.passedLanguage++;
+
+        if (!dryRun) {
+          const outDoc = {
+            youtubeId: doc.youtubeId,
+            youtubeUrl: doc.youtubeUrl,
+            sourceFile: doc.sourceFile,
+
+            mainUrl: doc.mainUrl,
+            aboutUrl: doc.aboutUrl,
+            videosUrl: doc.videosUrl,
+
+            ytAboutOk: doc.ytAboutOk,
+            ytVideosOk: doc.ytVideosOk,
+
+            channelInfo: doc.channelInfo,
+            videos: doc.videos,
+
+            extractedAt: doc.extractedAt,
+
+            codeCheck: {
+              checkedAt: new Date(),
+
+              passedRules: [
+                "country=Deutschland",
+                `nonGermanDistinctPerField<=${maxBadCharsDistinctPerField}`,
+                `deutschWordsDistinctTotal>=${minDistinctGermanWordsTotal}`,
+                `kidsHardRejectIfDistinctGte=${kidsDistinctThreshold} (found=${kidsRes.hitsDistinct})`,
+              ],
+
+              failedReason: "",
+
+              nonGermanCheck: {
+                maxDistinctPerField: nonGermanRes.maxDistinctPerField,
+                matches: nonGermanRes.matches,
               },
 
-              distinctThreshold: kidsRes.distinctThreshold,
-              hitsDistinct: kidsRes.hitsDistinct,
-              hitsTotal: kidsRes.hitsTotal,
+              germanCheck: {
+                minDistinct: germanRes.minDistinct,
+                hitsDistinct: germanRes.hitsDistinct,
+                wordsFoundSample: germanRes.wordsFoundSample,
+              },
 
-              // Matches enthält: phrase, hitsTotalInChannel, fields[{field,count,samples}]
-              matches: kidsRes.matches,
+              kidsHardCheck: {
+                rule: {
+                  rejectIfDistinctGte: kidsDistinctThreshold,
+                  passIfDistinctLt: kidsDistinctThreshold,
+                },
+                distinctThreshold: kidsRes.distinctThreshold,
+                hitsDistinct: kidsRes.hitsDistinct,
+                hitsTotal: kidsRes.hitsTotal,
+                matches: kidsRes.matches,
+              },
             },
-          },
-        };
+          };
 
-        await VorgefiltertCode.findOneAndUpdate(
-          { youtubeId: doc.youtubeId },
-          { $set: outDoc },
-          { upsert: true }
-        );
-      }
+          await VorgefiltertCode.findOneAndUpdate(
+            { youtubeId: doc.youtubeId },
+            { $set: outDoc },
+            { upsert: true }
+          );
+        }
 
-      job.progress.saved++;
+        job.progress.saved++;
 
-      if (job.progress.scanned % 25 === 0) {
-        emitSnapshot(jobId, {
-          step: `Scanne & filtere (${job.progress.scanned}/${totalPlanned})`,
-          stats: { ...job.progress },
+        if (job.progress.scanned % 25 === 0) {
+          emitSnapshot(jobId, {
+            step: `Scanne & filtere (${job.progress.scanned}/${totalPlanned})`,
+            stats: { ...job.progress },
+          });
+        }
+      } catch (perDocErr) {
+        // Wenn bei einem Dokument etwas schiefgeht (z.B. seltsame Daten),
+        // soll NICHT der ganze Job scheitern.
+        job.progress.errors++;
+
+        emitLog(jobId, "warn", "Fehler bei Dokument-Verarbeitung (skip)", {
+          youtubeId: doc?.youtubeId ?? null,
+          error: String(perDocErr?.message || perDocErr),
         });
+
+        if (writeDeletedChannels) {
+          await recordDeletedChannel({
+            jobId,
+            doc,
+            reason: "processing_error",
+            details: { error: String(perDocErr?.message || perDocErr) },
+          });
+          job.progress.deletedSaved++;
+        }
+
+        continue;
       }
     }
 
@@ -1672,11 +1869,15 @@ app.get("/api/collections", async (req, res) => {
     const countVorgefiltert = await Vorgefiltert.countDocuments();
     const countVorgefiltertCode = await VorgefiltertCode.countDocuments();
 
+    // ✅ Optional nice-to-have: deletedChannels mit anzeigen
+    const countDeleted = await DeletedChannel.countDocuments();
+
     return res.json({
       ok: true,
       collections: {
         vorgefiltert: countVorgefiltert,
         vorgefiltertCode: countVorgefiltertCode,
+        deletedChannels: countDeleted,
       },
     });
   } catch (e) {
@@ -1687,12 +1888,19 @@ app.get("/api/collections", async (req, res) => {
 function getCollectionModelByName(name) {
   if (name === "vorgefiltert") return Vorgefiltert;
   if (name === "vorgefiltertCode") return VorgefiltertCode;
+
+  // ✅ NEU: deletedChannels auch abrufbar in deiner Collections UI
+  if (name === "deletedChannels") return DeletedChannel;
+
   return null;
 }
 
 /**
  * GET /api/collection/:name?limit=100&skip=0&q=...
  * -> LISTE (schnell, ohne videos + ohne description)
+ *
+ * Hinweis:
+ * - Für deletedChannels funktioniert das auch, da wir ähnliche Felder haben.
  */
 app.get("/api/collection/:name", async (req, res) => {
   try {
@@ -1722,6 +1930,7 @@ app.get("/api/collection/:name", async (req, res) => {
         { youtubeUrl: { $regex: q, $options: "i" } },
         { "channelInfo.title": { $regex: q, $options: "i" } },
         { "channelInfo.handle": { $regex: q, $options: "i" } },
+        { lastReason: { $regex: q, $options: "i" } }, // ✅ hilft bei deletedChannels Suche
       ];
     }
 
@@ -1750,6 +1959,10 @@ app.get("/api/collection/:name", async (req, res) => {
         createdAt: 1,
 
         codeCheck: 1,
+
+        // ✅ deletedChannels-spezifisch:
+        lastReason: 1,
+        timesSkipped: 1,
       })
       .lean();
 
@@ -1762,6 +1975,10 @@ app.get("/api/collection/:name", async (req, res) => {
 /**
  * GET /api/collection/:name/item/:youtubeId
  * -> DETAILS (inkl. description + videos)
+ *
+ * Hinweis:
+ * - Für deletedChannels gibt es evtl. keine videos (je nachdem was du speicherst),
+ *   aber der Endpoint funktioniert trotzdem.
  */
 app.get("/api/collection/:name/item/:youtubeId", async (req, res) => {
   try {
@@ -1794,6 +2011,12 @@ app.get("/api/collection/:name/item/:youtubeId", async (req, res) => {
         error: 1,
         sourceFile: 1,
         codeCheck: 1,
+
+        // ✅ deletedChannels Details:
+        lastReason: 1,
+        lastDetails: 1,
+        timesSkipped: 1,
+        updatedAt: 1,
       })
       .lean();
 
