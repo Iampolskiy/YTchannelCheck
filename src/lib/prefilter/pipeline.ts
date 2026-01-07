@@ -30,6 +30,7 @@ export interface PrefilterStats {
   failedByLocation: number;
   failedByAlphabet: number;
   failedByLanguage: number;
+  failedByTopic: number;
   errors: number;
   isComplete: boolean;
 }
@@ -73,6 +74,7 @@ export async function runPrefilterPipeline(
     failedByLocation: 0,
     failedByAlphabet: 0,
     failedByLanguage: 0,
+    failedByTopic: 0,
     errors: 0,
     isComplete: false
   };
@@ -116,6 +118,7 @@ export async function runPrefilterPipeline(
           if (result.failedRule === 'location') stats.failedByLocation++;
           else if (result.failedRule === 'alphabet') stats.failedByAlphabet++;
           else if (result.failedRule === 'language') stats.failedByLanguage++;
+          else if (result.failedRule === 'topic') stats.failedByTopic++;
         }
         
       } catch (error) {
@@ -210,7 +213,7 @@ async function updateChannelStatus(
           prefilterCheck: {
             checkedAt: now,
             passed: true,
-            passedRules: ['location', 'alphabet', 'language'],
+            passedRules: ['location', 'alphabet', 'language', 'topic'],
             failedRule: null,
             failedReason: null,
             details: null
@@ -235,7 +238,8 @@ async function updateChannelStatus(
             details: {
               location: result.location,
               alphabet: result.alphabet,
-              language: result.language
+              language: result.language,
+              topics: result.topics
             }
           }
         }
@@ -243,4 +247,3 @@ async function updateChannelStatus(
     );
   }
 }
-

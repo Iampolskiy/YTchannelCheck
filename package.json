@@ -1,33 +1,41 @@
 {
-  "name": "youtube-channel-filter",
-  "version": "1.0.0",
+  "name": "youtube-channel-check",
+  "version": "0.1.0",
+  "private": true,
   "type": "module",
-  "main": "src/index.ts",
   "scripts": {
-    "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "dev": "tsx server.ts",
+    "build": "next build",
+    "start": "NODE_ENV=production tsx server.ts",
+    "lint": "eslint"
   },
   "dependencies": {
-    "express": "^4.22.1",
-    "mongoose": "^8.20.4",
+    "clsx": "^2.1.1",
+    "express": "^4.21.2",
+    "mongoose": "^8.9.5",
     "multer": "^1.4.5-lts.1",
+    "next": "16.1.1",
     "node-fetch": "^3.3.2",
-    "zod": "^4.3.5"
+    "ollama": "^0.6.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "sonner": "^2.0.7",
+    "swr": "^2.3.8",
+    "tailwind-merge": "^3.4.0",
+    "tsx": "^4.19.2",
+    "zod": "^3.24.1"
   },
-  "engines": {
-    "node": ">=18"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "YouTube Channel Filter for Google Ads exclusion lists",
   "devDependencies": {
-    "@types/express": "^5.0.6",
-    "@types/multer": "^2.0.0",
-    "@types/node": "^25.0.3",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "@tailwindcss/postcss": "^4",
+    "@types/express": "^5.0.0",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^20",
+    "@types/node-fetch": "^2.6.12",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }

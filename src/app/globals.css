@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  
+  --font-sans: 'Outfit', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* 
+  Goldweiss Brand Colors:
+  Primary: #1d455c (Dark blue-green) -> HSL(202, 52%, 24%)
+  Secondary: #d1aa34 (Gold/amber) -> HSL(45, 63%, 51%)
+  Background: #f9faf7 (Light warm gray) -> HSL(80, 14%, 98%)
+*/
+
+:root {
+  /* Main Background: Light warm gray (#f9faf7) */
+  --background: 80 14% 98%;
+  
+  /* Foreground: Dark blue-green equivalent for text (#1d455c but darker for readability) */
+  --foreground: 202 52% 15%;
+
+  /* Cards: White for contrast against the warm gray background */
+  --card: 0 0% 100%;
+  --card-foreground: 202 52% 15%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 202 52% 15%;
+
+  /* Primary: Dark blue-green (#1d455c) */
+  --primary: 202 52% 24%;
+  --primary-foreground: 0 0% 100%;
+
+  /* Secondary: Gold/amber (#d1aa34) */
+  --secondary: 45 63% 51%;
+  /* Secondary foreground: White or dark depending on accessibility. White looks okay on this gold. */
+  --secondary-foreground: 0 0% 100%;
+
+  /* Muted: Soft gray-blue */
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+
+  /* Accent: Used for hovers, slight gold tint or soft blue */
+  --accent: 45 63% 95%; /* Very light gold for hover */
+  --accent-foreground: 202 52% 24%;
+
+  /* Destructive: Standard Red */
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  
+  /* Ring: Gold for focus rings matches the brand style */
+  --ring: 45 63% 51%;
+
+  --radius: 0.5rem;
+}
+
+body {
+  @apply bg-background text-foreground font-sans antialiased;
+}
+
+/* Utility classes for components */
+.container {
+  @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full hover:bg-muted-foreground/50;
+}

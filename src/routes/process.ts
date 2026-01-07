@@ -11,6 +11,7 @@ import { validateBody } from '../middleware/index.js';
 import { PrefilterOptionsSchema, AIFilterOptionsSchema, ExtractorOptionsSchema } from '../schemas/index.js';
 import { runPrefilterPipeline, type PrefilterStats, type PrefilterPipelineOptions } from '../lib/prefilter/index.js';
 import { runExtractorPipeline, type ExtractorStats, type ExtractorOptions } from '../lib/extractor/index.js';
+import { runAIFilterPipeline, type AIStats, type AIFilterPipelineOptions } from '../lib/ai/index.js';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ const router = Router();
 // Job Storage (in-memory for now)
 // ============================================================================
 
-type JobProgress = PrefilterStats | ExtractorStats | null;
+type JobProgress = PrefilterStats | ExtractorStats | AIStats | null;
 
 interface Job {
   id: string;
@@ -143,13 +144,70 @@ router.post(
     try {
       const options = req.body;
 
-      // TODO: Implement job creation and execution with Ollama
-      // This will be completed in Step 8: AI Filter Pipeline
+      // Create job
+      const jobId = randomUUID();
+      const job: Job = {
+        id: jobId,
+        type: 'ai-filter',
+        status: 'pending',
+        startedAt: new Date(),
+        progress: null,
+        listeners: new Set(),
+      };
+      jobs.set(jobId, job);
+
+      // Start pipeline in background
+      setImmediate(async () => {
+        job.status = 'running';
+
+        try {
+          const pipelineOptions: AIFilterPipelineOptions = {
+            model: options.ollama?.model || 'llama3',
+            batchSize: 5, // Smaller batch for AI
+            prompts: ['kids', 'gaming'], // Default checks
+            
+            onProgress: (stats: AIStats) => {
+              job.progress = stats;
+              emitToListeners(job, 'progress', {
+                jobId,
+                status: 'running',
+                progress: stats,
+              });
+            },
+            
+            onLog: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => {
+              emitToListeners(job, 'log', { level, message, data });
+            },
+          };
+
+          const result = await runAIFilterPipeline(pipelineOptions);
+
+          job.status = 'completed';
+          job.completedAt = new Date();
+          job.progress = result;
+
+          emitToListeners(job, 'complete', {
+            jobId,
+            status: 'completed',
+            progress: result,
+          });
+        } catch (error) {
+          job.status = 'failed';
+          job.error = error instanceof Error ? error.message : String(error);
+          job.completedAt = new Date();
+
+          emitToListeners(job, 'error', {
+            jobId,
+            status: 'failed',
+            error: job.error,
+          });
+        }
+      });
       
       res.json({
         ok: true,
-        message: 'AI filter job started (not yet implemented)',
-        jobId: randomUUID(),
+        message: 'AI filter job started',
+        jobId,
         options,
       });
     } catch (error) {

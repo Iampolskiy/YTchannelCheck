@@ -4,7 +4,16 @@
  */
 
 import type { ChannelInfo, VideoInfo } from '../../types/index.js';
-import { GERMAN_WORDS, NON_GERMAN_CHARS, ALLOWED_COUNTRIES } from '../config/index.js';
+import { 
+  GERMAN_WORDS, 
+  NON_GERMAN_CHARS, 
+  ALLOWED_COUNTRIES 
+} from '../config/index.js';
+import { 
+  KIDS_KEYWORDS, 
+  BEAUTY_KEYWORDS, 
+  GAMING_KEYWORDS 
+} from '../config/topicKeywords.js';
 
 // ============================================================================
 // Types
@@ -32,6 +41,18 @@ export interface GermanWordsResult extends FilterResult {
   minDistinct: number;
   hitsDistinct: number;
   wordsFoundSample: string[];
+}
+
+export interface TopicFilterMatch {
+  keyword: string;
+  count: number;
+}
+
+export interface TopicFilterResult extends FilterResult {
+  topic: string;
+  threshold: number;
+  totalHits: number;
+  matches: TopicFilterMatch[];
 }
 
 export interface ChannelTexts {
@@ -75,6 +96,16 @@ function tokenize(text: string): Set<string> {
     .split(/[^a-zäöüß]+/i)
     .filter(w => w.length > 1);
   return new Set(words);
+}
+
+/**
+ * Tokenize text into array of lowercase words (keeping duplicates for counting).
+ */
+function tokenizeArray(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-zäöüß]+/i)
+    .filter(w => w.length > 1);
 }
 
 // ============================================================================
@@ -254,22 +285,85 @@ export function checkGermanWords(
 }
 
 // ============================================================================
+// Topic Filter (Kids/Beauty/Gaming)
+// ============================================================================
+
+/**
+ * Check if channel content matches a specific topic (negative filter).
+ * If total hits >= threshold, the channel is considered a match (and thus fails the filter).
+ */
+export function checkTopic(
+  texts: ChannelTexts,
+  topic: string,
+  keywords: ReadonlySet<string>,
+  threshold = 3
+): TopicFilterResult {
+  const fullText = buildFullText(texts);
+  const words = tokenizeArray(fullText);
+  
+  const matchesMap = new Map<string, number>();
+  let totalHits = 0;
+
+  for (const word of words) {
+    if (keywords.has(word)) {
+      matchesMap.set(word, (matchesMap.get(word) || 0) + 1);
+      totalHits++;
+    }
+  }
+
+  // Check specifically for multi-word phrases if needed (simple implementation supports single words)
+  // To keep it performant, we stick to tokenized single words for now as per the config.
+  
+  const isMatch = totalHits >= threshold;
+  
+  // Note: This is a NEGATIVE filter. 
+  // If isMatch is true (it IS a gaming channel), then passed is FALSE (we don't want it).
+  const passed = !isMatch;
+
+  const matches: TopicFilterMatch[] = Array.from(matchesMap.entries())
+    .map(([keyword, count]) => ({ keyword, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+
+  return {
+    passed,
+    topic,
+    threshold,
+    totalHits,
+    matches,
+    reason: passed ? undefined : `Detected as ${topic} content (${totalHits} keyword hits, threshold: ${threshold})`
+  };
+}
+
+// ============================================================================
 // Combined Prefilter Check
 // ============================================================================
+
+export interface TopicFilterConfig {
+  enabled: boolean;
+  keywords?: string[]; // Optional override
+  threshold: number;
+}
 
 export interface PrefilterOptions {
   requireDachLocation?: boolean;
   maxNonGermanCharsPerField?: number;
   minGermanWordsDistinct?: number;
+  topicFilters?: {
+    kids?: TopicFilterConfig;
+    beauty?: TopicFilterConfig;
+    gaming?: TopicFilterConfig;
+  };
 }
 
 export interface PrefilterResult {
   passed: boolean;
-  failedRule?: 'location' | 'alphabet' | 'language';
+  failedRule?: 'location' | 'alphabet' | 'language' | 'topic';
   reason?: string;
   location?: FilterResult;
   alphabet?: NonGermanCharsResult;
   language?: GermanWordsResult;
+  topics?: Record<string, TopicFilterResult>;
 }
 
 /**
@@ -284,7 +378,12 @@ export function runPrefilter(
   const {
     requireDachLocation = true,
     maxNonGermanCharsPerField = 3,
-    minGermanWordsDistinct = 5
+    minGermanWordsDistinct = 5,
+    topicFilters = {
+      kids: { enabled: true, threshold: 3 },
+      beauty: { enabled: true, threshold: 3 },
+      gaming: { enabled: true, threshold: 3 },
+    }
   } = options;
 
   const texts = extractChannelTexts(channelInfo, videos);
@@ -324,12 +423,72 @@ export function runPrefilter(
     };
   }
 
+  // 4. Topic Filters (Kids, Beauty, Gaming)
+  const topicResults: Record<string, TopicFilterResult> = {};
+
+  // Check Kids
+  if (topicFilters.kids?.enabled) {
+    const keywords = topicFilters.kids.keywords 
+      ? new Set(topicFilters.kids.keywords) 
+      : KIDS_KEYWORDS;
+    
+    const result = checkTopic(texts, 'kids', keywords, topicFilters.kids.threshold);
+    topicResults.kids = result;
+    
+    if (!result.passed) {
+      return {
+        passed: false,
+        failedRule: 'topic',
+        reason: result.reason,
+        topics: topicResults
+      };
+    }
+  }
+
+  // Check Beauty
+  if (topicFilters.beauty?.enabled) {
+    const keywords = topicFilters.beauty.keywords 
+      ? new Set(topicFilters.beauty.keywords) 
+      : BEAUTY_KEYWORDS;
+    
+    const result = checkTopic(texts, 'beauty', keywords, topicFilters.beauty.threshold);
+    topicResults.beauty = result;
+    
+    if (!result.passed) {
+      return {
+        passed: false,
+        failedRule: 'topic',
+        reason: result.reason,
+        topics: topicResults
+      };
+    }
+  }
+
+  // Check Gaming
+  if (topicFilters.gaming?.enabled) {
+    const keywords = topicFilters.gaming.keywords 
+      ? new Set(topicFilters.gaming.keywords) 
+      : GAMING_KEYWORDS;
+    
+    const result = checkTopic(texts, 'gaming', keywords, topicFilters.gaming.threshold);
+    topicResults.gaming = result;
+    
+    if (!result.passed) {
+      return {
+        passed: false,
+        failedRule: 'topic',
+        reason: result.reason,
+        topics: topicResults
+      };
+    }
+  }
+
   // All checks passed
   return {
     passed: true,
     location: { passed: true },
     alphabet: alphabetResult,
-    language: languageResult
+    language: languageResult,
+    topics: topicResults
   };
 }
-
