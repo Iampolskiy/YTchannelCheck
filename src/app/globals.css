@@ -39,65 +39,86 @@
 
 /* 
   Goldweiss Brand Colors:
-  Primary: #1d455c (Dark blue-green) -> HSL(202, 52%, 24%)
-  Secondary: #d1aa34 (Gold/amber) -> HSL(45, 63%, 51%)
-  Background: #f9faf7 (Light warm gray) -> HSL(80, 14%, 98%)
+  Primary: #1d455c (Dark blue-green)
+  Secondary: #d1aa34 (Gold/amber)
 */
 
 :root {
   /* Main Background: Light warm gray (#f9faf7) */
   --background: 80 14% 98%;
-  
-  /* Foreground: Dark blue-green equivalent for text (#1d455c but darker for readability) */
   --foreground: 202 52% 15%;
 
-  /* Cards: White for contrast against the warm gray background */
   --card: 0 0% 100%;
   --card-foreground: 202 52% 15%;
 
   --popover: 0 0% 100%;
   --popover-foreground: 202 52% 15%;
 
-  /* Primary: Dark blue-green (#1d455c) */
   --primary: 202 52% 24%;
   --primary-foreground: 0 0% 100%;
 
-  /* Secondary: Gold/amber (#d1aa34) */
   --secondary: 45 63% 51%;
-  /* Secondary foreground: White or dark depending on accessibility. White looks okay on this gold. */
   --secondary-foreground: 0 0% 100%;
 
-  /* Muted: Soft gray-blue */
   --muted: 210 40% 96.1%;
   --muted-foreground: 215.4 16.3% 46.9%;
 
-  /* Accent: Used for hovers, slight gold tint or soft blue */
-  --accent: 45 63% 95%; /* Very light gold for hover */
+  --accent: 45 63% 95%; 
   --accent-foreground: 202 52% 24%;
 
-  /* Destructive: Standard Red */
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
 
   --border: 214.3 31.8% 91.4%;
   --input: 214.3 31.8% 91.4%;
   
-  /* Ring: Gold for focus rings matches the brand style */
   --ring: 45 63% 51%;
 
   --radius: 0.5rem;
+}
+
+.dark {
+  /* Dark Mode Palette - Deep Blue/Slate for Primary, Gold accent remains */
+  --background: 222 47% 11%;  /* Deep Slate/Blue */
+  --foreground: 210 40% 98%;
+
+  --card: 222 47% 13%;        /* Slightly lighter than bg */
+  --card-foreground: 210 40% 98%;
+
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+
+  /* Primary: Brighter Blue-Teal for dark mode to stand out */
+  --primary: 199 89% 48%; 
+  --primary-foreground: 222 47.4% 11.2%;
+
+  /* Secondary: Gold remains consistent */
+  --secondary: 45 63% 51%;
+  --secondary-foreground: 222 47.4% 11.2%;
+
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
+
+  --accent: 217 33% 17%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 0 62% 30%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 217 33% 17%;
+  --input: 217 33% 17%;
+  
+  --ring: 45 63% 51%;
 }
 
 body {
   @apply bg-background text-foreground font-sans antialiased;
 }
 
-/* Utility classes for components */
 .container {
   @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
 }
 
-/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

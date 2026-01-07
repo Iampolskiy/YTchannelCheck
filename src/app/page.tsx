@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { FiltrationConditions } from "@/components/filtration-conditions";
 import { Documentation } from "@/components/documentation";
 import { DatabaseManager } from "@/components/database-manager";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("socialblade");
@@ -32,14 +33,14 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-background font-sans">
       {/* Header */}
-      <header className="bg-white border-b border-border sticky top-0 z-50 shadow-sm">
+      <header className="bg-card border-b border-border sticky top-0 z-50 shadow-sm">
         <div className="container py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 bg-primary text-primary-foreground rounded-lg flex items-center justify-center text-xl shadow-md">
               GW
             </div>
             <div>
-              <h1 className="text-xl font-bold text-primary tracking-tight">YouTube Channel Filter</h1>
+              <h1 className="text-xl font-bold text-foreground tracking-tight">YouTube Channel Filter</h1>
               <p className="text-xs text-muted-foreground font-medium">Powered by Goldweiss</p>
             </div>
           </div>
@@ -47,6 +48,7 @@ export default function Home() {
              <DatabaseManager />
              <FiltrationConditions />
              <Documentation />
+             <ThemeToggle />
           </div>
         </div>
       </header>
@@ -56,9 +58,9 @@ export default function Home() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <StatsCard label="Unchecked" value={stats?.unchecked} />
           <StatsCard label="Prefiltered" value={stats?.prefiltered} />
-          <StatsCard label="Positive" value={stats?.positive} className="text-green-600" />
-          <StatsCard label="Negative" value={stats?.negative} className="text-destructive" />
-          <StatsCard label="Total" value={stats?.total} className="text-secondary" />
+          <StatsCard label="Positive" value={stats?.positive} className="text-green-600 dark:text-green-400" />
+          <StatsCard label="Negative" value={stats?.negative} className="text-destructive dark:text-red-400" />
+          <StatsCard label="Total" value={stats?.total} className="text-secondary dark:text-yellow-400" />
         </div>
 
         <main className="flex flex-col gap-6">
@@ -76,10 +78,10 @@ export default function Home() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`
-                  px-5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 flex items-center gap-2 rounded-t-md hover:bg-accent
+                  px-5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 flex items-center gap-2 rounded-t-md hover:bg-accent hover:text-accent-foreground
                   ${activeTab === tab.id 
-                    ? "border-secondary text-primary bg-white shadow-sm" 
-                    : "border-transparent text-muted-foreground hover:text-foreground"}
+                    ? "border-secondary text-foreground bg-card shadow-sm" 
+                    : "border-transparent text-muted-foreground"}
                 `}
               >
                 {tab.label}
@@ -152,7 +154,7 @@ export default function Home() {
 
 function StatsCard({ label, value, className = "" }: { label: string, value?: number, className?: string }) {
   return (
-    <Card className="p-4 text-center shadow-sm hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-secondary">
+    <Card className="p-4 text-center shadow-sm hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-secondary dark:bg-card">
       <div className={`text-3xl font-bold font-mono tracking-tighter ${className}`}>
         {value !== undefined ? value : '-'}
       </div>
