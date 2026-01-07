@@ -27,6 +27,27 @@ const ListChannelsQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(1000000).default(1000),
   skip: z.coerce.number().min(0).default(0),
   q: z.string().optional(), // Search query
+  // Sorting options
+  sortBy: z.enum([
+    'youtubeId', 
+    'channelInfo.title', 
+    'channelInfo.subscriberCountText', 
+    'channelInfo.country',
+    'status', 
+    'createdAt', 
+    'updatedAt'
+  ]).optional(),
+  sortDir: z.enum(['asc', 'desc']).default('desc'),
+});
+
+const BulkDeleteSchema = z.object({
+  youtubeIds: z.array(z.string().min(1)).optional(),
+  deleteAllMatching: z.boolean().optional(),
+  q: z.string().optional(), // Search query filter for mass delete
+});
+
+const ResetDatabaseSchema = z.object({
+  target: z.enum(['all', 'negative', 'positive', 'unchecked']),
 });
 
 // =============================================================================
@@ -45,7 +66,7 @@ router.get(
     try {
       // After validation middleware, req.query is the parsed result
       const query = req.query as unknown as z.infer<typeof ListChannelsQuerySchema>;
-      const { status, decisionLevel, limit, skip, q } = query;
+      const { status, decisionLevel, limit, skip, q, sortBy, sortDir } = query;
 
       // Build filter
       const filter: Record<string, unknown> = {};
@@ -67,12 +88,25 @@ router.get(
         ];
       }
 
+      // Special handling for Country Sort: Filter out nulls
+      if (sortBy === 'channelInfo.country') {
+        filter['channelInfo.country'] = { $ne: null, $exists: true, $ne: '' };
+      }
+
+      // Build sort
+      const sort: Record<string, 1 | -1> = {};
+      if (sortBy) {
+        sort[sortBy] = sortDir === 'asc' ? 1 : -1;
+      } else {
+        sort.createdAt = -1; // Default
+      }
+
       // Get total count
       const total = await Channel.countDocuments(filter);
 
       // Get channels with projection (exclude heavy fields for list view)
       const channels = await Channel.find(filter)
-        .sort({ createdAt: -1 })
+        .sort(sort)
         .skip(skip)
         .limit(limit)
         .select({
@@ -138,6 +172,84 @@ router.get(
 );
 
 /**
+ * POST /api/channels/bulk-delete
+ * Delete multiple channels (by IDs or by filter)
+ */
+router.post(
+  '/bulk-delete',
+  validateBody(BulkDeleteSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { youtubeIds, deleteAllMatching, q } = req.body;
+
+      let result;
+
+      if (deleteAllMatching) {
+        // Delete all matching the current filter (q)
+        // Note: This is simplified. In a real app, you'd match all filters (status, etc.)
+        // For DatabaseManager, we mainly use 'q' (searchQuery) for filtering.
+        const filter: Record<string, unknown> = {};
+        if (q) {
+          filter.$or = [
+            { youtubeId: { $regex: q, $options: 'i' } },
+            { youtubeUrl: { $regex: q, $options: 'i' } },
+            { 'channelInfo.title': { $regex: q, $options: 'i' } },
+            { 'channelInfo.handle': { $regex: q, $options: 'i' } },
+          ];
+        }
+        // Safety: If no query and deleteAllMatching is true, it deletes EVERYTHING.
+        // This is intentional but dangerous.
+        result = await Channel.deleteMany(filter);
+      } else {
+        // Delete by specific IDs
+        if (!youtubeIds || youtubeIds.length === 0) {
+          throw ApiError.badRequest('No IDs provided');
+        }
+        result = await Channel.deleteMany({ youtubeId: { $in: youtubeIds } });
+      }
+
+      res.json({
+        ok: true,
+        deletedCount: result.deletedCount,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/channels/reset
+ * Reset/Delete channels by status or all
+ */
+router.post(
+  '/reset',
+  validateBody(ResetDatabaseSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { target } = req.body;
+      const filter: Record<string, unknown> = {};
+
+      if (target === 'all') {
+        // No filter, delete everything
+      } else {
+        // Filter by status
+        filter.status = target;
+      }
+
+      const result = await Channel.deleteMany(filter);
+
+      res.json({
+        ok: true,
+        deletedCount: result.deletedCount,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * GET /api/channels/:youtubeId
  * Get a single channel with full details (including videos)
  */
@@ -194,6 +306,33 @@ router.patch(
       res.json({
         ok: true,
         channel,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * DELETE /api/channels/:youtubeId
+ * Delete a single channel
+ */
+router.delete(
+  '/:youtubeId',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { youtubeId } = req.params;
+
+      const result = await Channel.deleteOne({ youtubeId });
+
+      if (result.deletedCount === 0) {
+        throw ApiError.notFound('Channel not found');
+      }
+
+      res.json({
+        ok: true,
+        deleted: true,
+        youtubeId,
       });
     } catch (error) {
       next(error);
@@ -304,4 +443,3 @@ router.post(
 );
 
 export default router;
-

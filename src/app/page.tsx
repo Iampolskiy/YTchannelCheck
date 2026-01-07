@@ -10,6 +10,9 @@ import { ChannelList } from "@/components/channel-list";
 import { useStats } from "@/lib/hooks";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
+import { FiltrationConditions } from "@/components/filtration-conditions";
+import { Documentation } from "@/components/documentation";
+import { DatabaseManager } from "@/components/database-manager";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("socialblade");
@@ -41,9 +44,9 @@ export default function Home() {
             </div>
           </div>
           <div className="flex gap-2">
-             <Button variant="outline" size="sm" className="hidden sm:flex">
-               Documentation
-             </Button>
+             <DatabaseManager />
+             <FiltrationConditions />
+             <Documentation />
           </div>
         </div>
       </header>
