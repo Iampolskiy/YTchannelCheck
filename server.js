@@ -4,11 +4,12 @@
  *
  * Dieses Backend hat zwei Prozesse:
  *
- * Prozess 1: SocialBlade → YouTube /about + /videos → MongoDB "vorgefiltert"
+ * Prozess 1: SocialBlade → YouTube /about + /videos → MongoDB "ungefiltert"
  *   - Route: POST /process/sb-html-to-db
  *
- * Prozess 2: MongoDB "vorgefiltert" → Regeln prüfen → MongoDB "vorgefiltertCode"
- *   - Route: POST /process/vorgefiltert-to-vorgefiltertCode
+ * Prozess 2: MongoDB "ungefiltert" → Regeln prüfen → MongoDB "vorgefiltertCode"
+ *   - Route: POST /process/ungefiltert-to-vorgefiltertCode
+ *   - (Alias/Legacy): POST /process/vorgefiltert-to-vorgefiltertCode
  *
  * ------------------------------------------------------------
  * NEU (dein Wunsch #1):
@@ -44,6 +45,27 @@
  *        2) DEUTSCH_WORDS_ARRAY Check
  *     => nur wenn einer failt, wird der Kanal rausgeworfen.
  *     => wenn beide ok, bleibt der Kanal drin und zählt als "deutsch via Inhalt".
+ *
+ * ------------------------------------------------------------
+ * NEU (dein Wunsch #3 - Dynamische Deutsch-Wörter-Regel):
+ * ------------------------------------------------------------
+ * Bisher:
+ * - "mindestens X distinct deutsche Wörter" (X war fix, Standard = 3)
+ *
+ * Jetzt:
+ * - X hängt von der Gesamtlänge des Kanaltextes ab (title + description + video titles).
+ * - Formel:
+ *     raw = ceil(totalWords / wordsPerRequiredGerman)
+ *     minDistinct = clamp(minGermanWordsBase, maxGermanWordsCap, raw)
+ *
+ * Defaults:
+ * - wordsPerRequiredGerman = 80
+ * - minGermanWordsBase = 3
+ * - maxGermanWordsCap = 25
+ *
+ * Effekt:
+ * - Kurze Kanäle bleiben bei min 3
+ * - Lange Kanäle brauchen mehr, aber mit Cap, damit es nicht "unmöglich" wird.
  */
 
 import express from "express";
@@ -60,8 +82,8 @@ import {
   extractVideosFromYtVideosInitialData,
 } from "./lib/youtubeInitialData.js";
 
-import { connectDb } from "./lib/db.js";
-import { Vorgefiltert } from "./lib/models/Vorgefiltert.js";
+import { connectDb, mongoose } from "./lib/db.js";
+import { Ungefiltert } from "./lib/models/Ungefiltert.js";
 import { VorgefiltertCode } from "./lib/models/VorgefiltertCode.js";
 import { DeletedChannel } from "./lib/models/DeletedChannel.js";
 
@@ -120,11 +142,24 @@ const VIDEOS_LIMIT_DEFAULT = 30;
 const DEFAULT_MAX_BAD_CHARS_DISTINCT_PER_FIELD = 3;
 
 /**
- * Prozess 2:
- * - Wenn im gesamten Kanaltext (title+desc+videos titles) weniger als X
- *   VERSCHIEDENE (unique) Wörter aus DEUTSCH_WORDS_ARRAY vorkommen => raus.
+ * Prozess 2 (DeutschWords-Regel):
+ * - Basis-Mindestwert (minGermanWordsBase).
+ *   (Wird als Untergrenze im dynamischen Threshold genutzt.)
  */
 const DEFAULT_MIN_GERMAN_WORDS_DISTINCT_TOTAL = 3;
+
+/**
+ * Prozess 2 (DeutschWords-Regel, dynamisch):
+ * - Pro wie viele Wörter benötigen wir 1 distinct deutsches Wort?
+ *   Beispiel: 80 => bei 241 Wörtern: ceil(241/80)=4 distinct deutsche Wörter nötig.
+ */
+const DEFAULT_WORDS_PER_REQUIRED_GERMAN = 80;
+
+/**
+ * Prozess 2 (DeutschWords-Regel, dynamisch):
+ * - Upper cap für extrem lange Kanäle (damit es nicht "unmöglich" wird).
+ */
+const DEFAULT_MAX_GERMAN_WORDS_CAP = 25;
 
 async function recordDeletedChannel({ jobId, doc, reason, details }) {
   try {
@@ -143,7 +178,7 @@ async function recordDeletedChannel({ jobId, doc, reason, details }) {
       channelInfo: doc?.channelInfo ?? null,
       extractedAt: doc?.extractedAt ?? null,
 
-      // ✅ NEU: Videos mit speichern
+      // ✅ Videos mit speichern (hilft extrem beim Debugging)
       videos: Array.isArray(doc?.videos) ? doc.videos : [],
 
       lastReason: String(reason || ""),
@@ -224,10 +259,72 @@ await ensureDir(DEFAULT_INPUT_YT_DIR);
 // Deutsch-Check Helfer (Prozess 2)
 // ---------------------------------------------------------------------------
 
+/**
+ * tokenizeText(text)
+ * - lowercased
+ * - split bei allem, was kein Buchstabe/Zahl ist
+ * - liefert Set => "distinct tokens"
+ */
 function tokenizeText(text) {
   const t = String(text || "").toLowerCase();
   const parts = t.split(/[^\p{L}\p{N}]+/gu).filter(Boolean);
   return new Set(parts);
+}
+
+/**
+ * countTotalWords(text)
+ * - zählt ALLE Wörter (nicht distinct)
+ * - Basis für dynamische threshold Formel
+ */
+function countTotalWords(text) {
+  const t = String(text || "").toLowerCase();
+  const parts = t.split(/[^\p{L}\p{N}]+/gu).filter(Boolean);
+  return parts.length;
+}
+
+/**
+ * clampInt(min, max, value)
+ * - clamp helper: begrenzt value auf [min..max]
+ */
+function clampInt(min, max, value) {
+  const v = Math.floor(Number(value));
+  if (!Number.isFinite(v)) return Math.floor(Number(min) || 0);
+  const lo = Math.floor(Number(min) || 0);
+  const hi = Math.floor(Number(max) || lo);
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/**
+ * computeMinDistinctGermanWords(totalWords, params)
+ * - zentrale Formel für dynamischen Mindestwert
+ *
+ * raw = ceil(totalWords / wordsPerRequiredGerman)
+ * minDistinct = clamp(minBase, maxCap, raw)
+ */
+function computeMinDistinctGermanWords(
+  totalWords,
+  {
+    wordsPerRequiredGerman = DEFAULT_WORDS_PER_REQUIRED_GERMAN,
+    minBase = DEFAULT_MIN_GERMAN_WORDS_DISTINCT_TOTAL,
+    maxCap = DEFAULT_MAX_GERMAN_WORDS_CAP,
+  } = {}
+) {
+  const total = Math.max(0, Math.floor(Number(totalWords) || 0));
+  const per = Math.max(1, Math.floor(Number(wordsPerRequiredGerman) || 1));
+  const base = Math.max(0, Math.floor(Number(minBase) || 0));
+  const cap = Math.max(base, Math.floor(Number(maxCap) || base));
+
+  const raw = Math.ceil(total / per);
+  const minDistinct = clampInt(base, cap, raw);
+
+  return {
+    minDistinct, // finaler Threshold
+    raw, // reines ceil(total/per)
+    totalWords: total,
+    per,
+    base,
+    cap,
+  };
 }
 
 function buildChannelContentText(doc) {
@@ -321,7 +418,15 @@ function nonGermanCharsDistinctPerFieldCheck(
   return { ok, maxDistinctPerField, matches };
 }
 
-function germanWordsDistinctTotalCheck(doc, deutschArray, minDistinct = 5) {
+/**
+ * germanWordsDistinctTotalCheck(doc, deutschArray, minDistinct)
+ * - schaut, wie viele DISTINCT Wörter aus DEUTSCH_WORDS_ARRAY vorkommen
+ * - Basis: gesamter Kanaltext (title + desc + videoTitles)
+ *
+ * WICHTIG:
+ * - minDistinct wird in Prozess 2 dynamisch berechnet und hier übergeben.
+ */
+function germanWordsDistinctTotalCheck(doc, deutschArray, minDistinct = 3) {
   const list = Array.isArray(deutschArray) ? deutschArray : [];
   const deutschSet = new Set(
     list.map((w) => String(w || "").toLowerCase()).filter(Boolean)
@@ -344,7 +449,7 @@ function germanWordsDistinctTotalCheck(doc, deutschArray, minDistinct = 5) {
 }
 
 /**
- * ✅ NEU: Country-Handling (anfängerfreundlich)
+ * ✅ Country-Handling (anfängerfreundlich)
  *
  * Warum brauchen wir das?
  * - YouTube liefert manchmal KEIN Country (country fehlt => null)
@@ -366,7 +471,7 @@ function getNormalizedCountry(doc) {
 }
 
 /**
- * ✅ NEU: Erlaubte "deutsche" Länder (Country ist eindeutig deutsch)
+ * ✅ Erlaubte "deutsche" Länder (Country ist eindeutig deutsch)
  *
  * Hier steht also (wie du gefragt hast): "wo steht im Code, dass Deutsch erlaubt ist?"
  * -> Genau HIER in allowedExact / allowedContains.
@@ -490,7 +595,7 @@ function createJob({ options }) {
       skippedBadChars: 0,
       skippedKidsHard: 0,
 
-      // ✅ NEU: wie viele wurden in deletedChannels geschrieben
+      // ✅ wie viele wurden in deletedChannels geschrieben
       deletedSaved: 0,
 
       errors: 0,
@@ -1044,13 +1149,13 @@ async function processOneChannel({
     };
 
     try {
-      await Vorgefiltert.findOneAndUpdate(
+      await Ungefiltert.findOneAndUpdate(
         { youtubeId: finalYoutubeId },
         { $set: doc },
         { upsert: true }
       );
 
-      emitLog(jobId, "info", "In MongoDB gespeichert (vorgefiltert)", {
+      emitLog(jobId, "info", "In MongoDB gespeichert (ungefiltert)", {
         youtubeId: finalYoutubeId,
         videosSaved: videosList.length,
       });
@@ -1154,7 +1259,12 @@ async function runJob(jobId) {
 
   const betweenChMaxMs =
     typeof job.options?.betweenChMaxMs === "number"
-      ? Math.max(betweenChMinMs, job.options.betweenChMaxMs)
+      ? Math.max(
+          betweenChMinMs,
+          job.options.betweenChMsMax ??
+            job.options.betweenChMaxMs ??
+            betweenChMinMs
+        )
       : BETWEEN_CH_MAX_MS_DEFAULT;
 
   const aiMinMs =
@@ -1360,7 +1470,7 @@ async function runJob(jobId) {
 }
 
 // ---------------------------------------------------------------------------
-// Job runner Prozess 2 (vorgefiltert → vorgefiltertCode)
+// Job runner Prozess 2 (ungefiltert → vorgefiltertCode)
 // ---------------------------------------------------------------------------
 async function runJobVorgefiltertToCode(jobId) {
   const job = jobs.get(jobId);
@@ -1394,10 +1504,23 @@ async function runJobVorgefiltertToCode(jobId) {
       ? Math.max(0, Math.floor(options.maxBadCharsDistinctPerField))
       : DEFAULT_MAX_BAD_CHARS_DISTINCT_PER_FIELD;
 
-  const minDistinctGermanWordsTotal =
-    typeof options.minDistinctGermanWordsTotal === "number"
+  // ✅ Dynamische Deutsch-Wörter-Regel Parameter (mit Defaults)
+  const minGermanWordsBase =
+    typeof options.minGermanWordsBase === "number"
+      ? Math.max(0, Math.floor(options.minGermanWordsBase))
+      : typeof options.minDistinctGermanWordsTotal === "number"
       ? Math.max(0, Math.floor(options.minDistinctGermanWordsTotal))
       : DEFAULT_MIN_GERMAN_WORDS_DISTINCT_TOTAL;
+
+  const wordsPerRequiredGerman =
+    typeof options.wordsPerRequiredGerman === "number"
+      ? Math.max(1, Math.floor(options.wordsPerRequiredGerman))
+      : DEFAULT_WORDS_PER_REQUIRED_GERMAN;
+
+  const maxGermanWordsCap =
+    typeof options.maxGermanWordsCap === "number"
+      ? Math.max(minGermanWordsBase, Math.floor(options.maxGermanWordsCap))
+      : DEFAULT_MAX_GERMAN_WORDS_CAP;
 
   const dryRun = Boolean(options.dryRun);
 
@@ -1416,17 +1539,22 @@ async function runJobVorgefiltertToCode(jobId) {
       ? options.writeDeletedChannels
       : true;
 
-  emitLog(jobId, "info", "Job gestartet (vorgefiltert → vorgefiltertCode)", {
+  emitLog(jobId, "info", "Job gestartet (ungefiltert → vorgefiltertCode)", {
     deutschArraySize: deutschArray.length,
     badCharArraySize: badCharArray.length,
     maxBadCharsDistinctPerField,
-    minDistinctGermanWordsTotal,
+
+    // ✅ NEU: dynamische Deutsch-Wörter-Settings
+    minGermanWordsBase,
+    wordsPerRequiredGerman,
+    maxGermanWordsCap,
+
     dryRun,
     limit: limit || "ALL",
     writeDeletedChannels,
   });
 
-  emitSnapshot(jobId, { step: "Starte Scan in vorgefiltert" });
+  emitSnapshot(jobId, { step: "Starte Scan in ungefiltert" });
 
   try {
     const totalDocs = await Vorgefiltert.countDocuments();
@@ -1468,7 +1596,7 @@ async function runJobVorgefiltertToCode(jobId) {
       try {
         /**
          * ------------------------------------------------------------
-         * ✅ NEU: Country-Logik mit Fallback
+         * ✅ Country-Logik mit Fallback
          * ------------------------------------------------------------
          *
          * Fälle:
@@ -1479,7 +1607,6 @@ async function runJobVorgefiltertToCode(jobId) {
          *      => nur wenn diese failen -> raus
          *      => wenn beide ok -> akzeptieren (german via content)
          */
-
         const countryNorm = getNormalizedCountry(doc); // null oder String
         const countryIsGerman = countryNorm
           ? isGermanCountryValue(countryNorm)
@@ -1570,11 +1697,20 @@ async function runJobVorgefiltertToCode(jobId) {
           continue;
         }
 
-        // 3) DeutschWords-Check
+        // 3) DeutschWords-Check (dynamisch)
+        const contentText = buildChannelContentText(doc);
+        const totalWords = countTotalWords(contentText);
+
+        const minCalc = computeMinDistinctGermanWords(totalWords, {
+          wordsPerRequiredGerman,
+          minBase: minGermanWordsBase,
+          maxCap: maxGermanWordsCap,
+        });
+
         germanRes = germanWordsDistinctTotalCheck(
           doc,
           deutschArray,
-          minDistinctGermanWordsTotal
+          minCalc.minDistinct
         );
 
         if (!germanRes.ok) {
@@ -1583,11 +1719,19 @@ async function runJobVorgefiltertToCode(jobId) {
           emitLog(
             jobId,
             "info",
-            "Skip: zu wenige deutsche Wörter (distinct) im gesamten Kanaltext",
+            "Skip: zu wenige deutsche Wörter (distinct) im gesamten Kanaltext (dynamischer Threshold)",
             {
               youtubeId: doc.youtubeId,
               hitsDistinct: germanRes.hitsDistinct,
               minDistinct: germanRes.minDistinct,
+
+              // ✅ NEU: Debug zum dynamischen threshold
+              totalWords: minCalc.totalWords,
+              wordsPerRequiredGerman: minCalc.per,
+              minBase: minCalc.base,
+              maxCap: minCalc.cap,
+              rawCeil: minCalc.raw,
+
               wordsFoundSample: germanRes.wordsFoundSample,
               country: countryNorm ?? null,
             }
@@ -1604,6 +1748,14 @@ async function runJobVorgefiltertToCode(jobId) {
                 country: countryNorm ?? null,
                 hitsDistinct: germanRes.hitsDistinct,
                 minDistinct: germanRes.minDistinct,
+
+                // ✅ NEU: mitschreiben
+                totalWords: minCalc.totalWords,
+                wordsPerRequiredGerman: minCalc.per,
+                minBase: minCalc.base,
+                maxCap: minCalc.cap,
+                rawCeil: minCalc.raw,
+
                 wordsFoundSample: germanRes.wordsFoundSample,
               },
             });
@@ -1711,14 +1863,15 @@ async function runJobVorgefiltertToCode(jobId) {
             codeCheck: {
               checkedAt: new Date(),
 
-              // ✅ NEU: Für dich super hilfreich beim Debuggen:
+              // ✅ Für dich super hilfreich beim Debuggen:
               germanDecision,
 
               passedRules: [
                 // Wichtig: jetzt darf country auch fehlen, solange Inhalt passt
                 "country in DE/AT/CH OR (country=null AND contentLooksGerman=true)",
                 `nonGermanDistinctPerField<=${maxBadCharsDistinctPerField}`,
-                `deutschWordsDistinctTotal>=${minDistinctGermanWordsTotal}`,
+                // ✅ dynamisch: wir loggen den *tatsächlichen* minDistinct für dieses Doc:
+                `deutschWordsDistinctTotal>=${germanRes.minDistinct} (dynamic: ceil(totalWords/${wordsPerRequiredGerman}) clamped ${minGermanWordsBase}..${maxGermanWordsCap})`,
                 `kidsHardRejectIfDistinctGte=${kidsDistinctThreshold} (found=${kidsRes.hitsDistinct})`,
               ],
 
@@ -1730,9 +1883,17 @@ async function runJobVorgefiltertToCode(jobId) {
               },
 
               germanCheck: {
+                // Ergebnisse
                 minDistinct: germanRes.minDistinct,
                 hitsDistinct: germanRes.hitsDistinct,
                 wordsFoundSample: germanRes.wordsFoundSample,
+
+                // ✅ NEU: wie kam minDistinct zustande?
+                totalWords: minCalc.totalWords,
+                rawCeil: minCalc.raw,
+                wordsPerRequiredGerman: minCalc.per,
+                minBase: minCalc.base,
+                maxCap: minCalc.cap,
               },
 
               kidsHardCheck: {
@@ -1788,7 +1949,7 @@ async function runJobVorgefiltertToCode(jobId) {
     job.status = "done";
     job.finishedAt = nowIso();
 
-    emitLog(jobId, "info", "Job fertig (vorgefiltert → vorgefiltertCode)", {
+    emitLog(jobId, "info", "Job fertig (ungefiltert → vorgefiltertCode)", {
       ...job.progress,
     });
 
@@ -1839,6 +2000,21 @@ app.post("/api/jobs/start", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Start Job Prozess 2
 // ---------------------------------------------------------------------------
+app.post("/process/ungefiltert-to-vorgefiltertCode", async (req, res) => {
+  const options = req.body || {};
+  const job = createJob({ options });
+
+  res.json({
+    ok: true,
+    jobId: job.jobId,
+    statusUrl: `/api/jobs/${job.jobId}`,
+    eventsUrl: `/api/jobs/${job.jobId}/stream`,
+  });
+
+  runJobVorgefiltertToCode(job.jobId);
+});
+
+// Legacy alias (alte URL bleibt funktionsfähig)
 app.post("/process/vorgefiltert-to-vorgefiltertCode", async (req, res) => {
   const options = req.body || {};
   const job = createJob({ options });
@@ -1848,6 +2024,7 @@ app.post("/process/vorgefiltert-to-vorgefiltertCode", async (req, res) => {
     jobId: job.jobId,
     statusUrl: `/api/jobs/${job.jobId}`,
     eventsUrl: `/api/jobs/${job.jobId}/stream`,
+    legacy: true,
   });
 
   runJobVorgefiltertToCode(job.jobId);
@@ -1925,6 +2102,50 @@ app.get("/api/jobs/:jobId/stream", (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Admin: Rename Collection (für Windows ohne mongosh/Compass)
+// ---------------------------------------------------------------------------
+app.post("/admin/rename/vorgefiltert-to-ungefiltert", async (req, res) => {
+  try {
+    await connectDb();
+    const force = Boolean(req.body?.force);
+
+    const db = mongoose.connection.db;
+    if (!db) {
+      return res.status(500).json({ ok: false, error: "MongoDB nicht verbunden" });
+    }
+
+    const src = "vorgefiltert";
+    const dst = "ungefiltert";
+
+    const srcExists = await db.listCollections({ name: src }).hasNext();
+    if (!srcExists) {
+      return res.status(404).json({
+        ok: false,
+        error: `Collection '${src}' existiert nicht (nichts umzubenennen).`,
+      });
+    }
+
+    const dstExists = await db.listCollections({ name: dst }).hasNext();
+    if (dstExists && !force) {
+      return res.status(409).json({
+        ok: false,
+        error: `Collection '${dst}' existiert bereits. Sende { force: true } um '${dst}' zu löschen und dann umzubenennen.`,
+      });
+    }
+
+    if (dstExists && force) {
+      await db.collection(dst).drop();
+    }
+
+    await db.collection(src).rename(dst);
+
+    return res.json({ ok: true, renamed: { from: src, to: dst }, force });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Frontend Dateien ausliefern
 // ---------------------------------------------------------------------------
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -1934,19 +2155,19 @@ app.get("/collections", (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Collections API (vorgefiltert + vorgefiltertCode + deletedChannels)
+// Collections API (ungefiltert + vorgefiltertCode + deletedChannels)
 // ---------------------------------------------------------------------------
 app.get("/api/collections", async (req, res) => {
   try {
     await connectDb();
-    const countVorgefiltert = await Vorgefiltert.countDocuments();
+    const countUngefiltert = await Ungefiltert.countDocuments();
     const countVorgefiltertCode = await VorgefiltertCode.countDocuments();
     const countDeleted = await DeletedChannel.countDocuments();
 
     return res.json({
       ok: true,
       collections: {
-        vorgefiltert: countVorgefiltert,
+        ungefiltert: countUngefiltert,
         vorgefiltertCode: countVorgefiltertCode,
         deletedChannels: countDeleted,
       },
@@ -1957,7 +2178,7 @@ app.get("/api/collections", async (req, res) => {
 });
 
 function getCollectionModelByName(name) {
-  if (name === "vorgefiltert") return Vorgefiltert;
+  if (name === "ungefiltert") return Ungefiltert;
   if (name === "vorgefiltertCode") return VorgefiltertCode;
   if (name === "deletedChannels") return DeletedChannel;
   return null;
@@ -2108,7 +2329,7 @@ app.listen(PORT, () => {
     `Start Prozess 1: POST http://localhost:${PORT}/process/sb-html-to-db`
   );
   console.log(
-    `Start Prozess 2: POST http://localhost:${PORT}/process/vorgefiltert-to-vorgefiltertCode`
+    `Start Prozess 2: POST http://localhost:${PORT}/process/ungefiltert-to-vorgefiltertCode`
   );
   console.log(`Upload: POST http://localhost:${PORT}/upload/option1`);
 });

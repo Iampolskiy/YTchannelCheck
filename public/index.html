@@ -41,22 +41,22 @@
         (A) NORMAL (sb-html):
             - Du lädst SocialBlade HTML-Dateien hoch (Upload).
             - Sie landen in /input.
-            - Dann klickst du "Start Prozess 1 (input → vorgefiltert)"
+            - Dann klickst du "Start Prozess 1 (input → ungefiltert)"
               -> Server liest HTML-Dateien aus /input.
 
         (B) SPEZIAL (sb-special):
             - Du hast fertige SocialBlade-Linklisten (Textdateien) in /inputYT.
-            - Du klickst "Start Prozess 1 (inputYT → vorgefiltert)"
+            - Du klickst "Start Prozess 1 (inputYT → ungefiltert)"
               -> Server liest Linklisten aus /inputYT und extrahiert daraus SocialBlade URLs.
 
         Danach startest du Prozess 2:
-            - (vorgefiltert → vorgefiltertCode) mit deinen Regeln
+            - (ungefiltert → vorgefiltertCode) mit deinen Regeln
       -->
       <section class="hero">
         <h1>Import & Prüfung von YouTube-Kanälen</h1>
         <p>
           Prozess 1 sammelt Kanäle aus SocialBlade-Quellen und schreibt sie nach
-          <b>vorgefiltert</b>. Danach prüft Prozess 2 die Regeln und schreibt
+          <b>ungefiltert</b>. Danach prüft Prozess 2 die Regeln und schreibt
           „bestehende“ Kanäle nach <b>vorgefiltertCode</b>.
         </p>
       </section>
@@ -108,7 +108,7 @@
             - Server nutzt dann DEFAULT_INPUT_DIR (/input)
           -->
           <button id="btnProcessSbToDb" class="btn btn--success btn--wide">
-            Start Prozess 1 (input → vorgefiltert)
+            Start Prozess 1 (input → ungefiltert)
           </button>
 
           <div class="divider"></div>
@@ -127,14 +127,14 @@
             id="btnProcessSbToDbInputYT"
             class="btn btn--success btn--wide"
           >
-            Start Prozess 1 (inputYT → vorgefiltert)
+            Start Prozess 1 (inputYT → ungefiltert)
           </button>
 
           <div class="divider"></div>
 
           <!--
             ==========================================================
-            PROZESS 2 (FILTER: vorgefiltert → vorgefiltertCode)
+            PROZESS 2 (FILTER: ungefiltert → vorgefiltertCode)
             ==========================================================
             WICHTIG: Die Options-Namen müssen zu deiner server.js passen.
 
@@ -149,7 +149,7 @@
             class="btn btn--success btn--wide"
             title="Filtert deutsche Kanäle nach Regeln und schreibt in vorgefiltertCode"
           >
-            Start Prozess 2 (vorgefiltert → vorgefiltertCode)
+            Start Prozess 2 (ungefiltert → vorgefiltertCode)
           </button>
 
           <div class="hint">
@@ -226,7 +226,7 @@
       <div class="container footer__inner">
         <span class="muted">© YouTubeChannelCheck</span>
         <span class="muted"
-          >MongoDB Collections: vorgefiltert / vorgefiltertCode</span
+          >MongoDB Collections: ungefiltert / vorgefiltertCode</span
         >
       </div>
     </footer>
@@ -472,7 +472,7 @@
 
       /**
        * ==========================================================
-       * PROZESS 2 (vorgefiltert → vorgefiltertCode)
+       * PROZESS 2 (ungefiltert → vorgefiltertCode)
        * ==========================================================
        * WICHTIG: Deine server.js erwartet diese Options-Namen:
        *   - minDistinctGermanWordsTotal
@@ -481,9 +481,9 @@
        * Deshalb setzen wir die hier korrekt.
        */
       $("btnProcessVorgefiltertToCode").addEventListener("click", async () => {
-        await startJob("/process/vorgefiltert-to-vorgefiltertCode", {
+        await startJob("/process/ungefiltert-to-vorgefiltertCode", {
           // ✅ korrekte Namen für deine server.js:
-          minDistinctGermanWordsTotal: 5,
+          minDistinctGermanWordsTotal: 4,
           maxBadCharsDistinctPerField: 3,
 
           dryRun: false,
