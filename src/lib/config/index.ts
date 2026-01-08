@@ -32,3 +32,14 @@ export const PREFILTER_DEFAULTS = {
   requireDachLocation: true,
 } as const;
 
+/**
+ * AI Configuration
+ */
+export const AI_CONFIG = {
+  ollama: {
+    host: 'http://192.168.178.142:11434',
+    defaultModel: 'llama3:8b',
+    timeout: 60000, // 60s
+  },
+} as const;
+

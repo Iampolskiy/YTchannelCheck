@@ -1,4 +1,5 @@
-import ollama from 'ollama';
+import { Ollama } from 'ollama';
+import { AI_CONFIG } from '../config/index';
 
 export interface OllamaOptions {
   model?: string;
@@ -16,11 +17,9 @@ export interface AIAnalysisResult {
  * Configure Ollama client
  */
 export function getOllamaClient(options: OllamaOptions = {}) {
-  // Currently the ollama js library uses the default host (http://127.0.0.1:11434)
-  // or OLLAMA_HOST env var. The library doesn't support per-instance config easily 
-  // without creating a new class instance if we wanted to point to different servers.
-  // For now, we rely on the default local instance.
-  return ollama;
+  return new Ollama({
+    host: options.baseUrl || AI_CONFIG.ollama.host,
+  });
 }
 
 /**
@@ -68,7 +67,7 @@ Answer with "suitable": true if it is NOT gaming content.`,
 export async function analyzeChannel(
   channelData: { title: string; description: string; videoTitles: string[] },
   promptType: 'kids' | 'gaming',
-  model = 'llama3'
+  model: string = AI_CONFIG.ollama.defaultModel
 ): Promise<AIAnalysisResult> {
   const client = getOllamaClient();
   
@@ -108,4 +107,3 @@ export async function analyzeChannel(
     throw new Error(`AI Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
-

@@ -116,7 +116,7 @@ export function Documentation() {
                       Go to the <strong>Prefiltered</strong> tab and click <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">Run AI Filter</span>.
                     </p>
                     <p>
-                      This sends channel data (Title, Description, Video Titles) to a local AI model (Ollama/Llama 3) for deep semantic analysis.
+                      This sends channel data (Title, Description, Video Titles) to a local AI model (Ollama/Llama 3:8b) for deep semantic analysis.
                     </p>
                     <ul className="list-disc pl-5 space-y-2">
                       <li>It asks: "Is this content made for kids?"</li>
@@ -162,7 +162,7 @@ export function Documentation() {
                 <div className="border rounded-lg p-4">
                   <h4 className="font-semibold mb-2">AI Filter is failing?</h4>
                   <p className="text-sm text-muted-foreground">
-                    Ensure <strong>Ollama</strong> is running on your machine (<code>ollama serve</code>) and you have pulled the model (<code>ollama pull llama3</code>).
+                    Ensure <strong>Ollama</strong> is running on your machine (<code>ollama serve</code>) and you have pulled the model (<code>ollama pull llama3:8b</code>).
                   </p>
                 </div>
               </div>

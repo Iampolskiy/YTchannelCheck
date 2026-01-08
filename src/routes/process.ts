@@ -12,6 +12,7 @@ import { PrefilterOptionsSchema, AIFilterOptionsSchema, ExtractorOptionsSchema }
 import { runPrefilterPipeline, type PrefilterStats, type PrefilterPipelineOptions } from '../lib/prefilter/index.js';
 import { runExtractorPipeline, type ExtractorStats, type ExtractorOptions } from '../lib/extractor/index.js';
 import { runAIFilterPipeline, type AIStats, type AIFilterPipelineOptions } from '../lib/ai/index.js';
+import { AI_CONFIG } from '../lib/config/index.js';
 
 const router = Router();
 
@@ -162,7 +163,7 @@ router.post(
 
         try {
           const pipelineOptions: AIFilterPipelineOptions = {
-            model: options.ollama?.model || 'llama3',
+            model: options.ollama?.model || AI_CONFIG.ollama.defaultModel,
             batchSize: 5, // Smaller batch for AI
             prompts: ['kids', 'gaming'], // Default checks
             

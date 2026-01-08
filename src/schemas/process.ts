@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { AI_CONFIG } from '../lib/config/index.js';
 
 // =============================================================================
 // Prefilter Schemas
@@ -100,9 +101,9 @@ export const AIFilterOptionsSchema = z.object({
   // Ollama connection settings
   ollama: z
     .object({
-      baseUrl: z.string().url().default('http://localhost:11434'),
-      model: z.string().min(1).default('llama3.2'),
-      timeout: z.number().min(1000).default(60000),
+      baseUrl: z.string().url().default(AI_CONFIG.ollama.host),
+      model: z.string().min(1).default(AI_CONFIG.ollama.defaultModel),
+      timeout: z.number().min(1000).default(AI_CONFIG.ollama.timeout),
     })
     .optional(),
   
@@ -139,8 +140,8 @@ export const ExtractorOptionsSchema = z.object({
   stopOnCaptcha: z.boolean().default(true),
   
   // Rate limiting options (for safeFetch)
-  minIntervalMs: z.number().min(100).max(5000).default(500),
-  jitterMs: z.number().min(0).max(2000).default(200),
+  // minIntervalMs: z.number().min(100).max(5000).default(500),
+  // jitterMs: z.number().min(0).max(2000).default(200),
   
   // Skip videos page for faster extraction (only get about page for country info)
   skipVideos: z.boolean().default(false),

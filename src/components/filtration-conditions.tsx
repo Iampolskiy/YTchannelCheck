@@ -42,7 +42,7 @@ const DEFAULT_SETTINGS = {
     }
   },
   ai: {
-    model: "llama3",
+    model: "llama3:8b",
     prompts: [
       {
         id: "kids",
@@ -87,7 +87,14 @@ export function FiltrationConditions() {
     const stored = localStorage.getItem("filterSettings");
     if (stored) {
       try {
-        setSettings(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        
+        // Migration: If model is the old default "llama3", update to "llama3:8b"
+        if (parsed.ai && parsed.ai.model === "llama3") {
+          parsed.ai.model = "llama3:8b";
+        }
+        
+        setSettings(parsed);
       } catch (e) {
         console.error("Failed to parse settings", e);
       }

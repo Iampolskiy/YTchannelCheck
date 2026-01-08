@@ -9,6 +9,7 @@
 
 import { Channel } from '../../models/index.js';
 import { analyzeChannel } from './ollama.js';
+import { AI_CONFIG } from '../config/index.js';
 import type { ChannelInfo, VideoInfo } from '../../types/index.js';
 
 export interface AIFilterPipelineOptions {
@@ -37,7 +38,7 @@ interface ChannelDocument {
 
 export async function runAIFilterPipeline(options: AIFilterPipelineOptions = {}): Promise<AIStats> {
   const {
-    model = 'llama3',
+    model = AI_CONFIG.ollama.defaultModel,
     batchSize = 10,
     prompts = ['kids', 'gaming'], // Default to checking both
     onProgress,
