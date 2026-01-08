@@ -36,14 +36,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowUpDown, RotateCcw, Trash2, Power } from "lucide-react";
+import { ArrowUpDown, RotateCcw, Trash2 } from "lucide-react";
 import useSWR from "swr";
-import { Select } from "@/components/ui/select";
+import { useTranslations } from "next-intl";
 
 export function DatabaseManager() {
+  const t = useTranslations();
   const [open, setOpen] = useState(false);
-  const [resetDialogOpen, setResetDialogOpen] = useState(false);
-  const [resetTarget, setResetTarget] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState({ column: "createdAt", direction: "desc" });
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 });
@@ -64,7 +63,7 @@ export function DatabaseManager() {
   const handleDelete = async (youtubeId: string) => {
     try {
       await api<{ ok: true }>(`/channels/${youtubeId}`, { method: 'DELETE' });
-      toast.success("Channel deleted");
+      toast.success(t("common.delete") + " " + t("stats.success")); // Placeholder until proper translation keys
       mutate();
       mutateStats();
     } catch (error) {
@@ -103,29 +102,6 @@ export function DatabaseManager() {
     }
   };
 
-  // Handle Global Reset
-  const handleGlobalReset = async () => {
-    const toastId = toast.loading("Resetting database...");
-    try {
-      // Assuming endpoint is POST /api/channels/reset with body { target: 'all' | 'negative' ... }
-      // Since that endpoint is not implemented in the current turn, we should add it.
-      // But for now, let's use the mass delete logic if 'all' is selected?
-      // No, let's call the proper endpoint which we will implement.
-      
-      const res = await api<{ ok: true, deletedCount: number }>('/channels/reset', {
-        method: 'POST',
-        body: JSON.stringify({ target: resetTarget })
-      });
-      
-      toast.success(`Reset complete. Deleted ${res.deletedCount} channels.`, { id: toastId });
-      setResetDialogOpen(false);
-      mutate();
-      mutateStats();
-    } catch (error) {
-      toast.error("Failed to reset database", { id: toastId });
-    }
-  };
-
   // Handle status update
   const handleUpdateStatus = async (youtubeId: string, newStatus: string) => {
     try {
@@ -147,7 +123,7 @@ export function DatabaseManager() {
       column,
       direction: prev.column === column && prev.direction === "asc" ? "desc" : "asc"
     }));
-    setPagination({ ...pagination, pageIndex: 0 }); // Reset to page 1 on sort change
+    setPagination({ ...pagination, pageIndex: 0 }); 
   };
 
   // Selection handlers
@@ -188,18 +164,12 @@ export function DatabaseManager() {
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-[90vw] h-[90vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="p-6 border-b shrink-0 flex flex-row items-center justify-between">
-          <div className="flex flex-col gap-1">
+        <DialogHeader className="p-6 border-b shrink-0">
+          <div className="flex items-center justify-between">
             <DialogTitle className="text-2xl font-bold flex items-center gap-2">
               <span>🗄️ Database Manager</span>
               <Badge variant="outline" className="ml-2 font-normal text-xs">{total} Total</Badge>
             </DialogTitle>
-            <DialogDescription>
-              View, search, sort, and manage all stored channels.
-            </DialogDescription>
-          </div>
-          
-          <div className="flex items-center gap-2">
             {(selectedIds.length > 0 || selectAllMode) && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -216,64 +186,21 @@ export function DatabaseManager() {
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleBulkDelete}>Delete</AlertDialogAction>
+                    <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleBulkDelete}>{t("common.delete")}</AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
             )}
-
-            <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="text-destructive border-destructive/20 hover:bg-destructive/10">
-                  <Power className="h-4 w-4 mr-2" />
-                  Reset Database
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Reset Database</DialogTitle>
-                  <DialogDescription>
-                    Select which data you want to permanently delete.
-                  </DialogDescription>
-                </DialogHeader>
-                
-                <div className="py-4">
-                  <div className="mb-4">
-                    <label className="text-sm font-medium mb-2 block">Target to Delete</label>
-                    <select 
-                      className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
-                      value={resetTarget}
-                      onChange={(e) => setResetTarget(e.target.value)}
-                    >
-                      <option value="all">Everything (Factory Reset)</option>
-                      <option value="negative">Negative Channels Only</option>
-                      <option value="positive">Positive Channels Only</option>
-                      <option value="unchecked">Unchecked Channels Only</option>
-                    </select>
-                  </div>
-                  
-                  {resetTarget === 'all' && (
-                    <div className="p-3 bg-destructive/10 text-destructive text-sm rounded-md border border-destructive/20">
-                      ⚠️ Warning: This will delete <strong>ALL {total} channels</strong> and cannot be undone.
-                    </div>
-                  )}
-                </div>
-
-                <DialogFooter>
-                  <Button variant="ghost" onClick={() => setResetDialogOpen(false)}>Cancel</Button>
-                  <Button variant="destructive" onClick={handleGlobalReset}>
-                    Confirm Reset
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
           </div>
+          <DialogDescription>
+            View, search, sort, and manage all stored channels.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="p-4 border-b bg-muted/20 flex gap-4 items-center">
           <Input 
-            placeholder="Search by ID, Title, or URL..." 
+            placeholder={t("common.search")} 
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setPagination({ ...pagination, pageIndex: 0 }); setSelectedIds([]); setSelectAllMode(false); }}
             className="flex-1 max-w-md"
@@ -358,7 +285,7 @@ export function DatabaseManager() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">Loading data...</TableCell>
+                  <TableCell colSpan={7} className="h-24 text-center">{t("common.loading")}</TableCell>
                 </TableRow>
               ) : channels.length === 0 ? (
                 <TableRow>
@@ -425,8 +352,8 @@ export function DatabaseManager() {
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDelete(channel.youtubeId)}>Delete</AlertDialogAction>
+                              <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(channel.youtubeId)}>{t("common.delete")}</AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>

@@ -1,0 +1,61 @@
+{
+  "common": {
+    "loading": "Laden...",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "search": "Suchen...",
+    "documentation": "Handbuch"
+  },
+  "header": {
+    "title": "YouTube Kanal Filter",
+    "subtitle": "Powered by Goldweiss"
+  },
+  "tabs": {
+    "socialBlade": "SocialBlade Import",
+    "manual": "Manueller Import",
+    "unchecked": "Ungeprüft",
+    "prefiltered": "Vorgefiltert",
+    "negative": "Negativ",
+    "positive": "Positiv"
+  },
+  "stats": {
+    "total": "Gesamt",
+    "unchecked": "Ungeprüft",
+    "prefiltered": "Vorgefiltert",
+    "positive": "Positiv",
+    "negative": "Negativ"
+  },
+  "import": {
+    "socialBlade": {
+      "title": "SocialBlade Scraper",
+      "browserAutomation": "Browser Automatisierung",
+      "startScraper": "Browser Starten",
+      "comingSoon": "Demnächst",
+      "manualUpload": "Oder HTML Dateien importieren",
+      "chooseFolder": "Ordner auswählen...",
+      "importNow": "Jetzt Importieren",
+      "readyToImport": "{count} Dateien bereit zum Import."
+    },
+    "manual": {
+      "title": "URLs Einfügen",
+      "campaign": "Kampagne (Erforderlich)",
+      "selectCampaign": "Kampagne wählen...",
+      "newCampaign": "+ Neu",
+      "createCampaign": "Kampagne Erstellen",
+      "pasteUrls": "YouTube URLs (Eine pro Zeile)",
+      "importChannels": "Kanäle Importieren",
+      "uploadCsv": "CSV Hochladen",
+      "dragDrop": "CSV Datei hier ablegen",
+      "clickToBrowse": "oder klicken zum Auswählen"
+    }
+  },
+  "actions": {
+    "runPrefilter": "Vorfilter Starten",
+    "runAiFilter": "KI Filter Starten",
+    "export": "Exportieren",
+    "resetDatabase": "Datenbank Zurücksetzen",
+    "deleteSelected": "Ausgewählte Löschen"
+  }
+}
+

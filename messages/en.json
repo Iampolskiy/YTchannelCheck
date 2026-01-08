@@ -1,0 +1,61 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "search": "Search...",
+    "documentation": "User Guide"
+  },
+  "header": {
+    "title": "YouTube Channel Filter",
+    "subtitle": "Powered by Goldweiss"
+  },
+  "tabs": {
+    "socialBlade": "SocialBlade Import",
+    "manual": "Manual Import",
+    "unchecked": "Unchecked",
+    "prefiltered": "Prefiltered",
+    "negative": "Negative",
+    "positive": "Positive"
+  },
+  "stats": {
+    "total": "Total Channels",
+    "unchecked": "Unchecked",
+    "prefiltered": "Prefiltered",
+    "positive": "Positive",
+    "negative": "Negative"
+  },
+  "import": {
+    "socialBlade": {
+      "title": "SocialBlade Scraper",
+      "browserAutomation": "Browser Automation",
+      "startScraper": "Start Browser",
+      "comingSoon": "Coming Soon",
+      "manualUpload": "Or Import HTML Files",
+      "chooseFolder": "Choose Folder...",
+      "importNow": "Import Now",
+      "readyToImport": "Ready to import {count} files."
+    },
+    "manual": {
+      "title": "Paste URLs",
+      "campaign": "Campaign (Required)",
+      "selectCampaign": "Select a campaign...",
+      "newCampaign": "+ New",
+      "createCampaign": "Create Campaign",
+      "pasteUrls": "YouTube URLs (One per line)",
+      "importChannels": "Import Channels",
+      "uploadCsv": "Upload CSV",
+      "dragDrop": "Drag & Drop CSV file here",
+      "clickToBrowse": "or click to browse"
+    }
+  },
+  "actions": {
+    "runPrefilter": "Run Prefilter Pipeline",
+    "runAiFilter": "Run AI Filter",
+    "export": "Export",
+    "resetDatabase": "Reset Database",
+    "deleteSelected": "Delete Selected"
+  }
+}
+

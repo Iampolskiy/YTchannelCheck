@@ -14,17 +14,20 @@ import { FiltrationConditions } from "@/components/filtration-conditions";
 import { Documentation } from "@/components/documentation";
 import { DatabaseManager } from "@/components/database-manager";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
+import { useTranslations } from "next-intl";
 
 export default function Home() {
+  const t = useTranslations();
   const [activeTab, setActiveTab] = useState("socialblade");
   const { stats } = useStats();
 
   const runPipeline = async (endpoint: string) => {
-    const toastId = toast.loading("Starting job...");
+    const toastId = toast.loading(t("common.loading"));
     try {
       const res = await api<{ ok: true; jobId: string }>(endpoint, { method: 'POST', body: '{}' });
       toast.success(`Job started: ${res.jobId}`, { id: toastId });
-      toast.info("Processing in background (SSE coming soon)");
+      toast.info("Processing in background");
     } catch (error) {
       toast.error('Failed to start job', { id: toastId });
     }
@@ -40,8 +43,8 @@ export default function Home() {
               GW
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">YouTube Channel Filter</h1>
-              <p className="text-xs text-muted-foreground font-medium">Powered by Goldweiss</p>
+              <h1 className="text-xl font-bold text-foreground tracking-tight">{t("header.title")}</h1>
+              <p className="text-xs text-muted-foreground font-medium">{t("header.subtitle")}</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -49,6 +52,7 @@ export default function Home() {
              <FiltrationConditions />
              <Documentation />
              <ThemeToggle />
+             <LanguageToggle />
           </div>
         </div>
       </header>
@@ -56,23 +60,23 @@ export default function Home() {
       <div className="container py-8 flex-1">
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <StatsCard label="Unchecked" value={stats?.unchecked} />
-          <StatsCard label="Prefiltered" value={stats?.prefiltered} />
-          <StatsCard label="Positive" value={stats?.positive} className="text-green-600 dark:text-green-400" />
-          <StatsCard label="Negative" value={stats?.negative} className="text-destructive dark:text-red-400" />
-          <StatsCard label="Total" value={stats?.total} className="text-secondary dark:text-yellow-400" />
+          <StatsCard label={t("stats.unchecked")} value={stats?.unchecked} />
+          <StatsCard label={t("stats.prefiltered")} value={stats?.prefiltered} />
+          <StatsCard label={t("stats.positive")} value={stats?.positive} className="text-green-600 dark:text-green-400" />
+          <StatsCard label={t("stats.negative")} value={stats?.negative} className="text-destructive dark:text-red-400" />
+          <StatsCard label={t("stats.total")} value={stats?.total} className="text-secondary dark:text-yellow-400" />
         </div>
 
         <main className="flex flex-col gap-6">
           {/* Navigation Tabs */}
           <div className="flex overflow-x-auto border-b border-border gap-1 pb-px scrollbar-none">
             {[
-              { id: "socialblade", label: "SocialBlade Import" },
-              { id: "manual", label: "Manual Import" },
-              { id: "unchecked", label: "Unchecked", count: stats?.unchecked },
-              { id: "prefiltered", label: "Prefiltered", count: stats?.prefiltered },
-              { id: "negative", label: "Negative", count: stats?.negative },
-              { id: "positive", label: "Positive", count: stats?.positive },
+              { id: "socialblade", label: t("tabs.socialBlade") },
+              { id: "manual", label: t("tabs.manual") },
+              { id: "unchecked", label: t("tabs.unchecked"), count: stats?.unchecked },
+              { id: "prefiltered", label: t("tabs.prefiltered"), count: stats?.prefiltered },
+              { id: "negative", label: t("tabs.negative"), count: stats?.negative },
+              { id: "positive", label: t("tabs.positive"), count: stats?.positive },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -105,11 +109,11 @@ export default function Home() {
             {activeTab === "unchecked" && (
               <ChannelList 
                 status="unchecked" 
-                title="Unchecked Channels" 
+                title={t("tabs.unchecked")} 
                 badgeVariant="secondary"
                 actionButton={
                   <Button className="bg-secondary text-secondary-foreground hover:bg-secondary/90 shadow-sm" onClick={() => runPipeline('/process/prefilter')}>
-                    🔬 Run Prefilter Pipeline
+                    🔬 {t("actions.runPrefilter")}
                   </Button>
                 }
               />
@@ -118,11 +122,11 @@ export default function Home() {
             {activeTab === "prefiltered" && (
               <ChannelList 
                 status="prefiltered" 
-                title="Prefiltered Channels" 
+                title={t("tabs.prefiltered")} 
                 badgeVariant="info"
                 actionButton={
                   <Button variant="primary" onClick={() => runPipeline('/process/ai-filter')}>
-                    🤖 Run AI Filter
+                    🤖 {t("actions.runAiFilter")}
                   </Button>
                 }
               />
@@ -131,7 +135,7 @@ export default function Home() {
             {activeTab === "negative" && (
               <ChannelList 
                 status="negative" 
-                title="Negative Channels" 
+                title={t("tabs.negative")} 
                 badgeVariant="destructive"
                 showExport
               />
@@ -140,7 +144,7 @@ export default function Home() {
             {activeTab === "positive" && (
               <ChannelList 
                 status="positive" 
-                title="Positive Channels" 
+                title={t("tabs.positive")} 
                 badgeVariant="success"
                 showExport
               />
