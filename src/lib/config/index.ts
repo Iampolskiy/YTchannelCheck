@@ -37,9 +37,9 @@ export const PREFILTER_DEFAULTS = {
  */
 export const AI_CONFIG = {
   ollama: {
-    host: 'http://192.168.178.142:11434',
-    defaultModel: 'llama3:8b',
-    timeout: 60000, // 60s
+    host: process.env.OLLAMA_HOST || 'http://127.0.0.1:11434',
+    defaultModel: process.env.OLLAMA_MODEL || 'llama3:8b',
+    timeout: parseInt(process.env.OLLAMA_TIMEOUT || '60000', 10),
   },
 } as const;
 

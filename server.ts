@@ -34,6 +34,12 @@ async function main() {
       const parsedUrl = parse(req.url!, true);
       const { pathname } = parsedUrl;
 
+      // Handle Hot Module Replacement (HMR) for Next.js in dev mode
+      if (pathname?.startsWith('/_next/webpack-hmr')) {
+        await handle(req, res, parsedUrl);
+        return;
+      }
+
       // Let Express handle /api requests
       if (pathname?.startsWith('/api')) {
         expressApp(req, res);
@@ -41,6 +47,19 @@ async function main() {
         // Let Next.js handle everything else
         await handle(req, res, parsedUrl);
       }
+    });
+
+    server.on('upgrade', (req, socket, head) => {
+       const parsedUrl = parse(req.url!, true);
+       const { pathname } = parsedUrl;
+       
+       if (pathname?.startsWith('/_next/webpack-hmr')) {
+         // Let Next.js handle HMR upgrades
+         // @ts-ignore - Next.js upgrade handler might not be strictly typed in all versions
+         if (nextApp.getUpgradeHandler) {
+             nextApp.getUpgradeHandler()(req, socket, head);
+         }
+       }
     });
 
     server.listen(port, () => {
