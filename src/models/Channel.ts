@@ -176,6 +176,9 @@ const ChannelSchema = new Schema<IChannel>(
     ytAboutOk: { type: Boolean, default: false },
     ytVideosOk: { type: Boolean, default: false },
     
+    // Rejection reason (for negative status)
+    rejectionReason: { type: String, default: null },
+    
     extractedAt: { type: Date, default: Date.now },
   },
   {

@@ -123,6 +123,7 @@ router.get(
           ytVideosOk: 1,
           extractedAt: 1,
           createdAt: 1,
+          rejectionReason: 1,
         })
         .lean();
 
@@ -282,20 +283,27 @@ router.get(
  */
 router.patch(
   '/:youtubeId/status',
-  validateBody(ChangeChannelStatusSchema.pick({ status: true })),
+  validateBody(ChangeChannelStatusSchema.pick({ status: true, reason: true })),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { youtubeId } = req.params;
-      const { status } = req.body;
+      const { status, reason } = req.body;
+
+      const update: Record<string, unknown> = {
+        status,
+        decisionLevel: 'manual',
+      };
+
+      if (status === 'negative' && reason) {
+        update.rejectionReason = reason;
+      } else if (status !== 'negative') {
+         // Clear rejection reason if not negative
+         update.rejectionReason = null;
+      }
 
       const channel = await Channel.findOneAndUpdate(
         { youtubeId },
-        {
-          $set: {
-            status,
-            decisionLevel: 'manual', // Mark as manual decision
-          },
-        },
+        { $set: update },
         { new: true }
       ).lean();
 

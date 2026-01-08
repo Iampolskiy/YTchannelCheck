@@ -165,6 +165,7 @@ export type ExtractorOptions = z.infer<typeof ExtractorOptionsSchema>;
 export const ChangeChannelStatusSchema = z.object({
   youtubeId: z.string().min(1, 'YouTube ID is required'),
   status: z.enum(['positive', 'negative', 'unchecked']),
+  reason: z.string().optional(),
 });
 
 export type ChangeChannelStatus = z.infer<typeof ChangeChannelStatusSchema>;

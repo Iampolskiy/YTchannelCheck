@@ -140,10 +140,18 @@ export function ChannelList({ status, title, badgeVariant = "secondary", actionB
                         </div>
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        {ch.prefilterCheck?.failedRule && (
-                          <Badge variant="destructive" className="text-xs">
-                            Fail: {ch.prefilterCheck.failedRule}
-                          </Badge>
+                        {ch.status === 'negative' && (
+                            <>
+                              {ch.rejectionReason ? (
+                                  <Badge variant="destructive" className="text-xs max-w-[200px] truncate" title={ch.rejectionReason}>
+                                      {ch.rejectionReason}
+                                  </Badge>
+                              ) : ch.prefilterCheck?.failedRule ? (
+                                  <Badge variant="destructive" className="text-xs">
+                                      Fail: {ch.prefilterCheck.failedRule}
+                                  </Badge>
+                              ) : null}
+                            </>
                         )}
                         {ch.sources?.socialBlade && (
                           <Badge variant="info" className="text-xs">SB</Badge>
