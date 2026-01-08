@@ -270,6 +270,50 @@ router.post(
           }
 
           // Scrape channel
+          // Optimization: Skip scraping if we just need to add it (we can scrape later via background job)
+          // For now, we scrape basic info to have a valid record.
+          // BUT: ScrapeChannel is slow. We should defer this or scrape lighter.
+          
+          // FAST PATH: Create 'unchecked' channel with minimal info and queue for extraction later?
+          // The current requirement says "Extract YouTube data" which implies immediate extraction.
+          // However, for bulk CSV, this is too slow (HTTP requests per row).
+          
+          // Let's create the channel record FIRST without full details, 
+          // marking it as 'pending_extraction' or just 'unchecked' with empty info.
+          // But our model requires youtubeId. We might need to fetch at least the ID if we only have a handle.
+          
+          // If we have a direct /channel/UC... URL, we know the ID!
+          let channelId: string | null = null;
+          let handle: string | null = null;
+          
+          if (url.includes('/channel/UC')) {
+             const match = url.match(/\/channel\/(UC[\w-]+)/);
+             if (match) channelId = match[1];
+          } else if (url.includes('/@')) {
+             const match = url.match(/\/@([\w.-]+)/);
+             if (match) handle = '@' + match[1];
+          }
+          
+          if (channelId) {
+             // We have the ID, insert directly and skip scraping
+             await Channel.create({
+                youtubeId: channelId,
+                youtubeUrl: `https://www.youtube.com/channel/${channelId}`,
+                sources: { socialBlade: false, campaignIds: [campaignId] },
+                status: 'unchecked',
+                decisionLevel: null,
+                channelInfo: { id: channelId, url: `https://www.youtube.com/channel/${channelId}` },
+                videos: [],
+                ytAboutOk: false,
+                ytVideosOk: false,
+                extractedAt: new Date(0), // Past date indicates "not yet extracted"
+             });
+             results.imported++;
+             continue;
+          }
+
+          // If we only have a handle (or user URL), we MUST scrape at least the main page to get the ID.
+          // This is the slow part, but unavoidable without an API.
           const scraped = await scrapeChannel(url);
 
           // Check if channel with this ID already exists
@@ -390,9 +434,47 @@ router.post(
             continue;
           }
 
-          const scraped = await scrapeChannel(url);
+          // Optimization for CSV Import:
+          // If we have the ID directly from the URL, we can skip the expensive scraping!
+          let channelId: string | null = null;
           
-          const existingById = await Channel.findOne({ youtubeId: scraped.youtubeId });
+          if (url.includes('/channel/UC')) {
+             const match = url.match(/\/channel\/(UC[\w-]+)/);
+             if (match) channelId = match[1];
+          }
+          
+          if (channelId) {
+             // We have the ID, verify if it exists first
+             const existingById = await Channel.findOne({ youtubeId: channelId });
+             if (existingById) {
+                 if (!existingById.sources.campaignIds.includes(campaignId)) {
+                   await Channel.updateOne(
+                     { _id: existingById._id },
+                     { $addToSet: { 'sources.campaignIds': campaignId } }
+                   );
+                 }
+                 results.skipped++;
+                 continue;
+             }
+
+             // Insert directly without scraping
+             await Channel.create({
+                youtubeId: channelId,
+                youtubeUrl: `https://www.youtube.com/channel/${channelId}`,
+                sources: { socialBlade: false, campaignIds: [campaignId] },
+                status: 'unchecked',
+                decisionLevel: null,
+                channelInfo: { id: channelId, url: `https://www.youtube.com/channel/${channelId}` },
+                videos: [],
+                ytAboutOk: false,
+                ytVideosOk: false,
+                extractedAt: new Date(0), // Mark as needing extraction
+             });
+             results.imported++;
+             continue;
+          }
+
+          const scraped = await scrapeChannel(url);
           if (existingById) {
             if (!existingById.sources.campaignIds.includes(campaignId)) {
               await Channel.updateOne(
