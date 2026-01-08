@@ -418,7 +418,8 @@ export function isChannelUrl(url: string): boolean {
     return (
       u.pathname.startsWith('/channel/') ||
       u.pathname.startsWith('/@') ||
-      u.pathname.startsWith('/c/')
+      u.pathname.startsWith('/c/') ||
+      u.pathname.startsWith('/user/')
     );
   } catch {
     return false;

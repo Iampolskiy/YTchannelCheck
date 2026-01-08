@@ -58,30 +58,77 @@ const upload = multer({
  * Parse CSV content and extract URLs from first column
  */
 function parseCsvUrls(content: string): string[] {
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   const urls: string[] = [];
+  // Regex to find youtube URLs (channel, user, c, @, or video) or SocialBlade URLs
+  const urlRegex = /(https?:\/\/(?:www\.)?(?:youtube\.com\/(?:channel\/|c\/|@|user\/|watch\?v=)|youtu\.be\/|socialblade\.com\/youtube\/[\w/-]+)[\w.-]+)/i;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
 
-    // Skip header row if it looks like a header
-    if (i === 0 && (line.toLowerCase().includes('url') || line.toLowerCase().includes('placement'))) {
+    // Skip header row if it looks like a header (and doesn't look like a URL)
+    if (i === 0 && !line.includes('http') && (line.toLowerCase().includes('url') || line.toLowerCase().includes('link') || line.toLowerCase().includes('placement'))) {
       continue;
     }
 
-    // Get first column (handle quoted values)
-    let url: string;
-    if (line.startsWith('"')) {
-      const endQuote = line.indexOf('"', 1);
-      url = endQuote > 0 ? line.slice(1, endQuote) : line;
-    } else {
-      url = line.split(',')[0];
+    // 1. Try regex match first
+    const match = line.match(urlRegex);
+    if (match) {
+      let foundUrl = match[0];
+      
+      // Convert SocialBlade URL to YouTube URL
+      if (foundUrl.includes('socialblade.com')) {
+        if (foundUrl.includes('/handle/')) {
+           const handle = foundUrl.split('/handle/')[1];
+           if (handle) foundUrl = `https://www.youtube.com/@${handle}`;
+        } else if (foundUrl.includes('/channel/')) {
+           const id = foundUrl.split('/channel/')[1];
+           if (id) foundUrl = `https://www.youtube.com/channel/${id}`;
+        } else if (foundUrl.includes('/user/')) {
+           const user = foundUrl.split('/user/')[1];
+           if (user) foundUrl = `https://www.youtube.com/user/${user}`;
+        } else if (foundUrl.includes('/c/')) {
+            const c = foundUrl.split('/c/')[1];
+            if (c) foundUrl = `https://www.youtube.com/c/${c}`;
+        }
+      }
+
+      urls.push(foundUrl);
+      continue;
     }
 
-    url = url.trim();
-    if (url && (url.includes('youtube.com') || url.includes('youtu.be'))) {
-      urls.push(url);
+    // 2. Fallback: split by comma/semicolon and check parts
+    const parts = line.split(/[,;\t]/);
+    for (const part of parts) {
+      let clean = part.trim().replace(/^["']|["']$/g, ''); // Remove quotes
+      
+      if (clean && (clean.includes('youtube.com') || clean.includes('youtu.be') || clean.includes('socialblade.com'))) {
+        // Ensure protocol if missing
+        if (!clean.startsWith('http')) {
+          clean = 'https://' + clean;
+        }
+
+        // Convert SocialBlade URL to YouTube URL (same logic)
+        if (clean.includes('socialblade.com')) {
+            if (clean.includes('/handle/')) {
+               const handle = clean.split('/handle/')[1];
+               if (handle) clean = `https://www.youtube.com/@${handle}`;
+            } else if (clean.includes('/channel/')) {
+               const id = clean.split('/channel/')[1];
+               if (id) clean = `https://www.youtube.com/channel/${id}`;
+            } else if (clean.includes('/user/')) {
+               const user = clean.split('/user/')[1];
+               if (user) clean = `https://www.youtube.com/user/${user}`;
+            } else if (clean.includes('/c/')) {
+                const c = clean.split('/c/')[1];
+                if (c) clean = `https://www.youtube.com/c/${c}`;
+            }
+        }
+
+        urls.push(clean);
+        break; // Found one, move to next line
+      }
     }
   }
 
