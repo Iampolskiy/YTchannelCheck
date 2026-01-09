@@ -43,7 +43,8 @@ a {
 }
 
 .container {
-  width: min(1200px, calc(100% - 32px));
+  /* Fast volle Breite (nützlich bei Tabellen/Logs) */
+  width: calc(100% - 28px);
   margin: 0 auto;
 }
 
@@ -135,6 +136,9 @@ code {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 16px;
+}
+.card--full {
+  grid-column: span 12;
 }
 @media (max-width: 920px) {
   .card {
@@ -235,6 +239,23 @@ code {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+/* Toggle (Checkbox + Label) */
+.toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  user-select: none;
+}
+.toggle input {
+  transform: translateY(1px);
 }
 
 /* Tags */

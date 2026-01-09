@@ -82,6 +82,23 @@
   align-items: center;
 }
 
+/* Toggle (Checkbox + Label) */
+.toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  user-select: none;
+}
+.toggle input {
+  transform: translateY(1px);
+}
+
 .input {
   min-width: 260px;
   padding: 10px 12px;
@@ -109,7 +126,31 @@
   width: 100%;
   border-collapse: collapse;
   /* mehr Platz, weil zusätzliche Spalten (EnrichOk/Error/FetchedAt) */
-  min-width: 1300px;
+  min-width: 1600px;
+}
+
+/* Raw JSON */
+.rawDetails summary {
+  cursor: pointer;
+  user-select: none;
+}
+.rawActions {
+  margin: 10px 0 8px 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.jsonBox {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.18);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow: auto;
 }
 
 .table thead th {

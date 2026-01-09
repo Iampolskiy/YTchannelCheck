@@ -1557,7 +1557,7 @@ async function runJobVorgefiltertToCode(jobId) {
   emitSnapshot(jobId, { step: "Starte Scan in ungefiltert" });
 
   try {
-    const totalDocs = await Vorgefiltert.countDocuments();
+    const totalDocs = await Ungefiltert.countDocuments();
     const totalPlanned = limit ? Math.min(limit, totalDocs) : totalDocs;
 
     job.progress.channelsTotal = totalPlanned;
@@ -1577,7 +1577,7 @@ async function runJobVorgefiltertToCode(jobId) {
     job.progress.errors = 0;
 
     // ✅ Performance: limit direkt in Query anwenden
-    let q = Vorgefiltert.find({}).sort({ _id: 1 });
+    let q = Ungefiltert.find({}).sort({ _id: 1 });
     if (limit) q = q.limit(limit);
     const cursor = q.cursor();
 
@@ -2111,7 +2111,9 @@ app.post("/admin/rename/vorgefiltert-to-ungefiltert", async (req, res) => {
 
     const db = mongoose.connection.db;
     if (!db) {
-      return res.status(500).json({ ok: false, error: "MongoDB nicht verbunden" });
+      return res
+        .status(500)
+        .json({ ok: false, error: "MongoDB nicht verbunden" });
     }
 
     const src = "vorgefiltert";
@@ -2202,31 +2204,37 @@ app.get("/api/collection/:name", async (req, res) => {
 
     const limitRaw = Number(req.query.limit);
     const skipRaw = Number(req.query.skip);
-    const q = String(req.query.q || "").trim();
+    const queryStr = String(req.query.q || "").trim();
 
     const limit = Number.isFinite(limitRaw)
       ? Math.min(Math.max(limitRaw, 1), 500)
       : 100;
     const skip = Number.isFinite(skipRaw) ? Math.max(skipRaw, 0) : 0;
+    const full =
+      String(req.query.full || "").trim() === "1" ||
+      String(req.query.full || "")
+        .trim()
+        .toLowerCase() === "true";
 
     const filter = {};
-    if (q) {
+    if (queryStr) {
       filter.$or = [
-        { youtubeId: { $regex: q, $options: "i" } },
-        { youtubeUrl: { $regex: q, $options: "i" } },
-        { "channelInfo.title": { $regex: q, $options: "i" } },
-        { "channelInfo.handle": { $regex: q, $options: "i" } },
-        { lastReason: { $regex: q, $options: "i" } },
+        { youtubeId: { $regex: queryStr, $options: "i" } },
+        { youtubeUrl: { $regex: queryStr, $options: "i" } },
+        { "channelInfo.title": { $regex: queryStr, $options: "i" } },
+        { "channelInfo.handle": { $regex: queryStr, $options: "i" } },
+        { lastReason: { $regex: queryStr, $options: "i" } },
       ];
     }
 
     const total = await Model.countDocuments(filter);
 
-    const items = await Model.find(filter)
+    let mongoQuery = Model.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .select({
+      .limit(limit);
+    if (!full) {
+      mongoQuery = mongoQuery.select({
         youtubeId: 1,
         youtubeUrl: 1,
         sourceFile: 1,
@@ -2248,8 +2256,9 @@ app.get("/api/collection/:name", async (req, res) => {
 
         lastReason: 1,
         timesSkipped: 1,
-      })
-      .lean();
+      });
+    }
+    const items = await mongoQuery.lean();
 
     return res.json({ ok: true, total, items });
   } catch (e) {
@@ -2278,27 +2287,8 @@ app.get("/api/collection/:name/item/:youtubeId", async (req, res) => {
       return res.status(400).json({ ok: false, error: "youtubeId fehlt" });
     }
 
-    const doc = await Model.findOne({ youtubeId })
-      .select({
-        youtubeId: 1,
-        youtubeUrl: 1,
-        channelInfo: 1,
-        videos: 1,
-        aboutUrl: 1,
-        videosUrl: 1,
-        extractedAt: 1,
-        createdAt: 1,
-        status: 1,
-        error: 1,
-        sourceFile: 1,
-        codeCheck: 1,
-
-        lastReason: 1,
-        lastDetails: 1,
-        timesSkipped: 1,
-        updatedAt: 1,
-      })
-      .lean();
+    // DETAILS: komplettes Dokument zurückgeben (damit UI wirklich "alles" anzeigen kann)
+    const doc = await Model.findOne({ youtubeId }).lean();
 
     if (!doc) {
       return res

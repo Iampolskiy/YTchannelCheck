@@ -123,6 +123,10 @@
             />
             <button id="btnSearch" class="btn btn--primary">Suchen</button>
             <button id="btnClear" class="btn btn--ghost">Reset</button>
+            <label class="toggle">
+              <input id="toggleFull" type="checkbox" />
+              <span>Alle Felder in Liste</span>
+            </label>
           </div>
         </div>
 
@@ -147,6 +151,9 @@
                 <th>ytAboutOk</th>
                 <th>ytVideosOk</th>
                 <th>Status</th>
+                <th>sourceFile</th>
+                <th>lastReason</th>
+                <th>timesSkipped</th>
                 <th>extractedAt</th>
                 <th>createdAt</th>
                 <th>Details</th>
@@ -185,6 +192,7 @@
         skip: 0,
         total: 0,
         q: "",
+        full: false,
       };
 
       /**
@@ -220,6 +228,14 @@
         if (v === true) return `<span class="chip chip--ok">OK</span>`;
         if (v === false) return `<span class="chip chip--danger">FAIL</span>`;
         return `<span class="chip chip--soft">—</span>`;
+      }
+
+      function safeJson(obj) {
+        try {
+          return JSON.stringify(obj ?? null, null, 2);
+        } catch {
+          return String(obj ?? "");
+        }
       }
 
       /**
@@ -285,6 +301,7 @@
         url.searchParams.set("limit", state.limit);
         url.searchParams.set("skip", state.skip);
         if (state.q) url.searchParams.set("q", state.q);
+        if (state.full) url.searchParams.set("full", "1");
 
         const res = await fetch(url.toString());
         const data = await res.json();
@@ -314,6 +331,12 @@
               const handle = r.channelInfo?.handle ?? "";
               const country = r.channelInfo?.country ?? "";
               const subsText = r.channelInfo?.subscriberCountText ?? "";
+              const sourceFile = r.sourceFile ?? "";
+              const lastReason = r.lastReason ?? "";
+              const timesSkipped =
+                typeof r.timesSkipped === "number"
+                  ? String(r.timesSkipped)
+                  : "";
 
               return `
                 <tr>
@@ -335,6 +358,9 @@
                   <td>${renderBoolChip(r.ytAboutOk)}</td>
                   <td>${renderBoolChip(r.ytVideosOk)}</td>
                   <td>${escapeHtml(r.status ?? "")}</td>
+                  <td>${escapeHtml(sourceFile)}</td>
+                  <td class="mono">${escapeHtml(lastReason)}</td>
+                  <td class="mono">${escapeHtml(timesSkipped)}</td>
 
                   <td>${escapeHtml(fmtDate(r.extractedAt))}</td>
                   <td>${escapeHtml(fmtDate(r.createdAt))}</td>
@@ -344,7 +370,7 @@
                     <button
                       class="btn btn--ghost btnDetails"
                       data-youtubeid="${escapeHtml(r.youtubeId)}"
-                      title="Details (Description + Videos)"
+                      title="Details (komplettes Dokument)"
                     >
                       ▶
                     </button>
@@ -451,11 +477,11 @@
           .join("");
 
         // Details-Zeile bauen
-        // colspan muss genau zur Spaltenzahl passen: wir haben 12 Spalten
+        // colspan muss genau zur Spaltenzahl passen
         const detailsTr = document.createElement("tr");
         detailsTr.className = "detailsRow";
         detailsTr.innerHTML = `
-          <td colspan="12">
+          <td colspan="15">
             <div class="detailsBox">
               <div class="detailsGrid">
                 <div><strong>Title:</strong> ${escapeHtml(ci.title ?? "")}</div>
@@ -482,6 +508,32 @@
                   }
                 </div>
 
+                <div class="full"><strong>YouTube URL:</strong>
+                  ${
+                    item.youtubeUrl
+                      ? `<a href="${escapeHtml(
+                          item.youtubeUrl
+                        )}" target="_blank" rel="noreferrer">${escapeHtml(
+                          item.youtubeUrl
+                        )}</a>`
+                      : `<span class="muted">—</span>`
+                  }
+                </div>
+
+                <div><strong>sourceFile:</strong> ${escapeHtml(
+                  item.sourceFile ?? ""
+                )}</div>
+                <div><strong>status:</strong> ${escapeHtml(
+                  item.status ?? ""
+                )}</div>
+
+                <div class="full"><strong>lastReason:</strong> <span class="mono">${escapeHtml(
+                  item.lastReason ?? ""
+                )}</span></div>
+                <div><strong>timesSkipped:</strong> <span class="mono">${escapeHtml(
+                  typeof item.timesSkipped === "number" ? item.timesSkipped : ""
+                )}</span></div>
+
                 <div class="full"><strong>Description:</strong><br />
                   ${
                     description
@@ -501,6 +553,18 @@
                       ? `<ol class="videoList">${videoLis}</ol>`
                       : `<div class="muted">Keine Videos gespeichert.</div>`
                   }
+                </div>
+
+                <div class="full">
+                  <details class="rawDetails">
+                    <summary><strong>Rohdaten (JSON)</strong> <span class="muted small">— alle Felder</span></summary>
+                    <div class="rawActions">
+                      <button class="btn btn--ghost btnCopyJson" data-json="${escapeHtml(
+                        safeJson(item)
+                      )}">JSON kopieren</button>
+                    </div>
+                    <pre class="jsonBox">${escapeHtml(safeJson(item))}</pre>
+                  </details>
                 </div>
               </div>
             </div>
@@ -542,6 +606,27 @@
         state.q = "";
         state.skip = 0;
         await loadCollectionData();
+      });
+
+      // Toggle: alle Felder in Liste (langsamer, aber vollständig)
+      $("toggleFull").addEventListener("change", async (e) => {
+        state.full = Boolean(e.target.checked);
+        state.skip = 0;
+        await loadCollectionData();
+      });
+
+      // Copy JSON button (Event Delegation)
+      document.addEventListener("click", async (e) => {
+        const btn = e.target.closest(".btnCopyJson");
+        if (!btn) return;
+        const txt = btn.getAttribute("data-json") || "";
+        try {
+          await navigator.clipboard.writeText(txt);
+          btn.textContent = "Kopiert!";
+          setTimeout(() => (btn.textContent = "JSON kopieren"), 900);
+        } catch {
+          alert("Kopieren fehlgeschlagen. Bitte manuell markieren/kopieren.");
+        }
       });
 
       // Refresh
