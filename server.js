@@ -87,14 +87,21 @@ import { Ungefiltert } from "./lib/models/Ungefiltert.js";
 import { VorgefiltertCode } from "./lib/models/VorgefiltertCode.js";
 import { DeletedChannel } from "./lib/models/DeletedChannel.js";
 import { buildChannelContentText } from "./lib/utils/channelText.js";
-import { nonGermanCharsDistinctPerFieldCheck } from "./lib/codeChecks/nonGermanCharsDistinctPerFieldCheck.js";
 import { germanWordsDistinctTotalCheck } from "./lib/codeChecks/germanWordsDistinctTotalCheck.js";
 import { DEUTSCH_WORDS_ARRAY } from "./lib/config/deutschArray.js";
+
 import { NON_GERMAN_UNICODE_CHARS } from "./lib/config/charArray.js";
+import { nonGermanCharsDistinctPerFieldCheck } from "./lib/codeChecks/nonGermanCharsDistinctPerFieldCheck.js";
+
 import { KIDS_HARD_PHRASES } from "./lib/config/blockedPhrasesArrayKids.js";
 import { kidsHardPhrasesCheck } from "./lib/codeChecks/kidsHardPhrasesCheck.js";
+
 import { ADDICTION_HARD_PHRASES } from "./lib/config/blockedPhrasesArrayAddiction.js";
 import { addictionHardPhrasesCheck } from "./lib/codeChecks/addictionHardPhrasesCheck.js";
+
+import { COMBAT_SPORTS_PHRASES } from "./lib/config/blockedPhrasesArrayCombatSports.js";
+import { combatSportsPhrasesCheck } from "./lib/codeChecks/combatSportsPhrasesCheck.js";
+
 import { descriptionNotEmptyCheck } from "./lib/codeChecks/descriptionNotEmptyCheck.js";
 import { loadChannelsFromSbLinkFolder } from "./lib/sbSpecialInput.js";
 
@@ -166,7 +173,10 @@ const DEFAULT_MAX_GERMAN_WORDS_CAP = 25;
 // THEMEN für Hard Phrases Checks: wie viele DISTINCT Phrasen führen zum Rauswurf?
 const KIDS_HARD_PHRASES_DISTINCT_AMOUNT_NR = 2;
 const ADDICTION_HARD_PHRASES_DISTINCT_AMOUNT_NR = 2;
+const COMBAT_SPORTS_PHRASES_DISTINCT_AMOUNT_NR = 2;
 
+// ---------------------------------------------------------------------------
+// Hilfsfunktion: Gelöschte Kanäle protokollieren
 async function recordDeletedChannel({ jobId, doc, reason, details }) {
   try {
     const youtubeId = String(doc?.youtubeId || "").trim();
@@ -1767,6 +1777,58 @@ async function runJobVorgefiltertToCode(jobId) {
           continue;
         }
 
+        /* ============================
+   ✅ NEU: Kampfsport-Check
+   ============================ */
+        const combatDistinctThreshold =
+          typeof options.combatSportsDistinctThreshold === "number"
+            ? Math.max(0, Math.floor(options.combatSportsDistinctThreshold))
+            : COMBAT_SPORTS_PHRASES_DISTINCT_AMOUNT_NR;
+
+        const combatRes = combatSportsPhrasesCheck(
+          doc,
+          COMBAT_SPORTS_PHRASES,
+          combatDistinctThreshold,
+          { maxSamplesPerField: 3 }
+        );
+
+        if (!combatRes.ok) {
+          // Optional: eigener Counter, falls du willst
+          // job.progress.skippedCombatSports++;
+
+          emitLog(
+            jobId,
+            "info",
+            "Skip: Kampfsport-Content (COMBAT_SPORTS_PHRASES)",
+            {
+              youtubeId: doc.youtubeId,
+              hitsDistinct: combatRes.hitsDistinct,
+              rejectIfDistinctGte: combatDistinctThreshold,
+              hitsTotal: combatRes.hitsTotal,
+              matches: combatRes.matches.slice(0, 25),
+              country: countryNorm ?? null,
+            }
+          );
+
+          if (writeDeletedChannels) {
+            await recordDeletedChannel({
+              jobId,
+              doc,
+              reason: "combat_sports_phrases_distinct_threshold_reached",
+              details: {
+                country: countryNorm ?? null,
+                rejectIfDistinctGte: combatDistinctThreshold,
+                hitsDistinct: combatRes.hitsDistinct,
+                hitsTotal: combatRes.hitsTotal,
+                matches: combatRes.matches,
+              },
+            });
+            job.progress.deletedSaved++;
+          }
+
+          continue;
+        }
+
         // ✅ Wenn wir hier sind => Kanal ist "OK" und wird übernommen
         job.progress.passedLanguage++;
 
@@ -1802,6 +1864,7 @@ async function runJobVorgefiltertToCode(jobId) {
                 `deutschWordsDistinctTotal>=${germanRes.minDistinct} (dynamic: ceil(totalWords/${wordsPerRequiredGerman}) clamped ${minGermanWordsBase}..${maxGermanWordsCap})`,
                 `kidsHardRejectIfDistinctGte=${kidsDistinctThreshold} (found=${kidsRes.hitsDistinct})`,
                 `addictionHardRejectIfDistinctGte=${addictionDistinctThreshold} (found=${addictionRes.hitsDistinct})`,
+                `combatSportsRejectIfDistinctGte=${combatDistinctThreshold} (found=${combatRes.hitsDistinct})`,
                 `descriptionChars>=${descRes.minChars} (found=${descRes.length})`,
               ],
 
@@ -1846,6 +1909,17 @@ async function runJobVorgefiltertToCode(jobId) {
                 hitsDistinct: addictionRes.hitsDistinct,
                 hitsTotal: addictionRes.hitsTotal,
                 matches: addictionRes.matches,
+              },
+              // ✅ NEU: nur Debug/Protokoll
+              combatSportsCheck: {
+                rule: {
+                  rejectIfDistinctGte: combatDistinctThreshold,
+                  passIfDistinctLt: combatDistinctThreshold,
+                },
+                distinctThreshold: combatRes.distinctThreshold,
+                hitsDistinct: combatRes.hitsDistinct,
+                hitsTotal: combatRes.hitsTotal,
+                matches: combatRes.matches,
               },
             },
           };
