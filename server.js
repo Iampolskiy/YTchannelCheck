@@ -86,16 +86,16 @@ import { connectDb, mongoose } from "./lib/db.js";
 import { Ungefiltert } from "./lib/models/Ungefiltert.js";
 import { VorgefiltertCode } from "./lib/models/VorgefiltertCode.js";
 import { DeletedChannel } from "./lib/models/DeletedChannel.js";
-
+import { buildChannelContentText } from "./lib/utils/channelText.js";
+import { nonGermanCharsDistinctPerFieldCheck } from "./lib/codeChecks/nonGermanCharsDistinctPerFieldCheck.js";
+import { germanWordsDistinctTotalCheck } from "./lib/codeChecks/germanWordsDistinctTotalCheck.js";
 import { DEUTSCH_WORDS_ARRAY } from "./lib/config/deutschArray.js";
 import { NON_GERMAN_UNICODE_CHARS } from "./lib/config/charArray.js";
-
-// ✅ Kids-Phrasen-Array
 import { KIDS_HARD_PHRASES } from "./lib/config/blockedPhrasesArrayKids.js";
-
-// ✅ Kids-Check Logik
 import { kidsHardPhrasesCheck } from "./lib/codeChecks/kidsHardPhrasesCheck.js";
-
+import { ADDICTION_HARD_PHRASES } from "./lib/config/blockedPhrasesArrayAddiction.js";
+import { addictionHardPhrasesCheck } from "./lib/codeChecks/addictionHardPhrasesCheck.js";
+import { descriptionNotEmptyCheck } from "./lib/codeChecks/descriptionNotEmptyCheck.js";
 import { loadChannelsFromSbLinkFolder } from "./lib/sbSpecialInput.js";
 
 // ---------------------------------------------------------------------------
@@ -134,6 +134,8 @@ const AI_SIM_MAX_MS_DEFAULT = 75_000;
 // Wie viele Videos pro Kanal speichern
 const VIDEOS_LIMIT_DEFAULT = 30;
 
+const DEFAULT_MIN_DESCRIPTION_CHARS = 10;
+
 /**
  * Prozess 2:
  * - Wenn EIN Feld (channel title, channel description oder irgendein video title)
@@ -160,6 +162,10 @@ const DEFAULT_WORDS_PER_REQUIRED_GERMAN = 80;
  * - Upper cap für extrem lange Kanäle (damit es nicht "unmöglich" wird).
  */
 const DEFAULT_MAX_GERMAN_WORDS_CAP = 25;
+
+// THEMEN für Hard Phrases Checks: wie viele DISTINCT Phrasen führen zum Rauswurf?
+const KIDS_HARD_PHRASES_DISTINCT_AMOUNT_NR = 2;
+const ADDICTION_HARD_PHRASES_DISTINCT_AMOUNT_NR = 2;
 
 async function recordDeletedChannel({ jobId, doc, reason, details }) {
   try {
@@ -259,33 +265,12 @@ await ensureDir(DEFAULT_INPUT_YT_DIR);
 // Deutsch-Check Helfer (Prozess 2)
 // ---------------------------------------------------------------------------
 
-/**
- * tokenizeText(text)
- * - lowercased
- * - split bei allem, was kein Buchstabe/Zahl ist
- * - liefert Set => "distinct tokens"
- */
-function tokenizeText(text) {
-  const t = String(text || "").toLowerCase();
-  const parts = t.split(/[^\p{L}\p{N}]+/gu).filter(Boolean);
-  return new Set(parts);
-}
-
-/**
- * countTotalWords(text)
- * - zählt ALLE Wörter (nicht distinct)
- * - Basis für dynamische threshold Formel
- */
 function countTotalWords(text) {
   const t = String(text || "").toLowerCase();
   const parts = t.split(/[^\p{L}\p{N}]+/gu).filter(Boolean);
   return parts.length;
 }
 
-/**
- * clampInt(min, max, value)
- * - clamp helper: begrenzt value auf [min..max]
- */
 function clampInt(min, max, value) {
   const v = Math.floor(Number(value));
   if (!Number.isFinite(v)) return Math.floor(Number(min) || 0);
@@ -294,13 +279,6 @@ function clampInt(min, max, value) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/**
- * computeMinDistinctGermanWords(totalWords, params)
- * - zentrale Formel für dynamischen Mindestwert
- *
- * raw = ceil(totalWords / wordsPerRequiredGerman)
- * minDistinct = clamp(minBase, maxCap, raw)
- */
 function computeMinDistinctGermanWords(
   totalWords,
   {
@@ -327,135 +305,6 @@ function computeMinDistinctGermanWords(
   };
 }
 
-function buildChannelContentText(doc) {
-  const title = doc?.channelInfo?.title || "";
-  const desc = doc?.channelInfo?.description || "";
-
-  const videoTitles = Array.isArray(doc?.videos)
-    ? doc.videos.map((v) => v?.title || "").join(" ")
-    : "";
-
-  return `${title}\n${desc}\n${videoTitles}`.trim();
-}
-
-function getTextsToCheck(doc) {
-  const channelTitle = String(doc?.channelInfo?.title || "");
-  const channelDescription = String(doc?.channelInfo?.description || "");
-  const videoTitles = Array.isArray(doc?.videos)
-    ? doc.videos.map((v) => String(v?.title || ""))
-    : [];
-  return { channelTitle, channelDescription, videoTitles };
-}
-
-function scanDistinctBadCharsInText(text, badSet) {
-  const found = new Set();
-  for (const ch of String(text || "")) {
-    if (badSet.has(ch)) found.add(ch);
-  }
-  return { distinctCount: found.size, chars: Array.from(found) };
-}
-
-function nonGermanCharsDistinctPerFieldCheck(
-  doc,
-  badCharArray,
-  maxDistinctPerField = 3
-) {
-  const list = Array.isArray(badCharArray) ? badCharArray : [];
-  const badSet = new Set(list.map((c) => String(c || "")).filter(Boolean));
-
-  if (badSet.size === 0) {
-    return { ok: true, maxDistinctPerField, matches: [] };
-  }
-
-  const { channelTitle, channelDescription, videoTitles } =
-    getTextsToCheck(doc);
-
-  const matches = [];
-  let ok = true;
-
-  {
-    const r = scanDistinctBadCharsInText(channelTitle, badSet);
-    if (r.distinctCount > 0) {
-      matches.push({
-        field: "channelInfo.title",
-        distinctCount: r.distinctCount,
-        chars: r.chars.slice(0, 50),
-        textSample: channelTitle.slice(0, 140),
-      });
-    }
-    if (r.distinctCount > maxDistinctPerField) ok = false;
-  }
-
-  {
-    const r = scanDistinctBadCharsInText(channelDescription, badSet);
-    if (r.distinctCount > 0) {
-      matches.push({
-        field: "channelInfo.description",
-        distinctCount: r.distinctCount,
-        chars: r.chars.slice(0, 50),
-        textSample: channelDescription.slice(0, 140),
-      });
-    }
-    if (r.distinctCount > maxDistinctPerField) ok = false;
-  }
-
-  for (let i = 0; i < videoTitles.length; i++) {
-    const title = videoTitles[i];
-    const r = scanDistinctBadCharsInText(title, badSet);
-
-    if (r.distinctCount > 0) {
-      matches.push({
-        field: `videos[${i}].title`,
-        distinctCount: r.distinctCount,
-        chars: r.chars.slice(0, 50),
-        textSample: title.slice(0, 140),
-      });
-    }
-
-    if (r.distinctCount > maxDistinctPerField) ok = false;
-  }
-
-  return { ok, maxDistinctPerField, matches };
-}
-
-/**
- * germanWordsDistinctTotalCheck(doc, deutschArray, minDistinct)
- * - schaut, wie viele DISTINCT Wörter aus DEUTSCH_WORDS_ARRAY vorkommen
- * - Basis: gesamter Kanaltext (title + desc + videoTitles)
- *
- * WICHTIG:
- * - minDistinct wird in Prozess 2 dynamisch berechnet und hier übergeben.
- */
-function germanWordsDistinctTotalCheck(doc, deutschArray, minDistinct = 3) {
-  const list = Array.isArray(deutschArray) ? deutschArray : [];
-  const deutschSet = new Set(
-    list.map((w) => String(w || "").toLowerCase()).filter(Boolean)
-  );
-
-  const content = buildChannelContentText(doc);
-  const tokens = tokenizeText(content);
-
-  const found = [];
-  for (const w of deutschSet) {
-    if (tokens.has(w)) found.push(w);
-  }
-
-  return {
-    ok: found.length >= minDistinct,
-    minDistinct,
-    hitsDistinct: found.length,
-    wordsFoundSample: found.slice(0, 50),
-  };
-}
-
-/**
- * ✅ Country-Handling (anfängerfreundlich)
- *
- * Warum brauchen wir das?
- * - YouTube liefert manchmal KEIN Country (country fehlt => null)
- * - Du willst dann NICHT sofort wegwerfen,
- *   sondern zuerst über Inhalt (BadChars + DeutschWords) entscheiden.
- */
 function getNormalizedCountry(doc) {
   // Falls field nicht existiert -> null
   const raw = doc?.channelInfo?.country;
@@ -470,15 +319,6 @@ function getNormalizedCountry(doc) {
   return s;
 }
 
-/**
- * ✅ Erlaubte "deutsche" Länder (Country ist eindeutig deutsch)
- *
- * Hier steht also (wie du gefragt hast): "wo steht im Code, dass Deutsch erlaubt ist?"
- * -> Genau HIER in allowedExact / allowedContains.
- *
- * Du hattest bereits Deutschland/Österreich/Schweiz drin — ich mache es robuster,
- * indem ich auch englische Varianten zulasse (austria/switzerland) sowie Kürzel.
- */
 function isGermanCountryValue(countryString) {
   const c = String(countryString || "")
     .trim()
@@ -594,7 +434,8 @@ function createJob({ options }) {
       skippedNotGerman: 0,
       skippedBadChars: 0,
       skippedKidsHard: 0,
-
+      skippedAddictionHard: 0,
+      skippedEmptyDescription: 0,
       // ✅ wie viele wurden in deletedChannels geschrieben
       deletedSaved: 0,
 
@@ -1572,6 +1413,7 @@ async function runJobVorgefiltertToCode(jobId) {
     job.progress.skippedNotGerman = 0;
     job.progress.skippedBadChars = 0;
     job.progress.skippedKidsHard = 0;
+    job.progress.skippedAddictionHard = 0;
 
     job.progress.deletedSaved = 0;
     job.progress.errors = 0;
@@ -1643,6 +1485,44 @@ async function runJobVorgefiltertToCode(jobId) {
               details: {
                 country: countryNorm,
                 rule: "country must be one of DE/AT/CH (or germany/austria/switzerland variants)",
+              },
+            });
+            job.progress.deletedSaved++;
+          }
+
+          continue;
+        }
+        /* ============================
+   ✅ NEU: Description-Check
+   ============================ */
+
+        const descRes = descriptionNotEmptyCheck(doc, {
+          minChars: DEFAULT_MIN_DESCRIPTION_CHARS,
+        }); // oder z.B. 10
+        job.progress.skippedEmptyDescription++;
+
+        if (!descRes.ok) {
+          // (Optional) eigener Counter, wenn du willst:
+          // job.progress.skippedEmptyDescription++;
+
+          emitLog(jobId, "info", "Skip: Description ist leer/zu kurz", {
+            youtubeId: doc.youtubeId,
+            length: descRes.length,
+            minChars: descRes.minChars,
+            sample: descRes.sample,
+            country: countryNorm ?? null,
+          });
+
+          if (writeDeletedChannels) {
+            await recordDeletedChannel({
+              jobId,
+              doc,
+              reason: "description_empty_or_too_short",
+              details: {
+                length: descRes.length,
+                minChars: descRes.minChars,
+                sample: descRes.sample,
+                country: countryNorm ?? null,
               },
             });
             job.progress.deletedSaved++;
@@ -1794,7 +1674,7 @@ async function runJobVorgefiltertToCode(jobId) {
         const kidsDistinctThreshold =
           typeof options.kidsHardDistinctThreshold === "number"
             ? Math.max(0, Math.floor(options.kidsHardDistinctThreshold))
-            : 2;
+            : KIDS_HARD_PHRASES_DISTINCT_AMOUNT_NR;
 
         const kidsRes = kidsHardPhrasesCheck(
           doc,
@@ -1838,6 +1718,54 @@ async function runJobVorgefiltertToCode(jobId) {
 
           continue;
         }
+        // 5) ✅ Sucht-Inhalt Check (ADDICTION_HARD_PHRASES)
+        const addictionDistinctThreshold =
+          typeof options.addictionHardDistinctThreshold === "number"
+            ? Math.max(0, Math.floor(options.addictionHardDistinctThreshold))
+            : ADDICTION_HARD_PHRASES_DISTINCT_AMOUNT_NR;
+
+        const addictionRes = addictionHardPhrasesCheck(
+          doc,
+          ADDICTION_HARD_PHRASES,
+          addictionDistinctThreshold,
+          { maxSamplesPerField: 3 }
+        );
+
+        if (!addictionRes.ok) {
+          job.progress.skippedAddictionHard++;
+
+          emitLog(
+            jobId,
+            "info",
+            "Skip: Sucht-Inhalt (ADDICTION_HARD_PHRASES) – zu viele Treffer (distinct)",
+            {
+              youtubeId: doc.youtubeId,
+              hitsDistinct: addictionRes.hitsDistinct,
+              rejectIfDistinctGte: addictionDistinctThreshold,
+              hitsTotal: addictionRes.hitsTotal,
+              matches: addictionRes.matches.slice(0, 25),
+              country: countryNorm ?? null,
+            }
+          );
+
+          if (writeDeletedChannels) {
+            await recordDeletedChannel({
+              jobId,
+              doc,
+              reason: "addiction_hard_phrases_distinct_threshold_reached",
+              details: {
+                country: countryNorm ?? null,
+                rejectIfDistinctGte: addictionDistinctThreshold,
+                hitsDistinct: addictionRes.hitsDistinct,
+                hitsTotal: addictionRes.hitsTotal,
+                matches: addictionRes.matches,
+              },
+            });
+            job.progress.deletedSaved++;
+          }
+
+          continue;
+        }
 
         // ✅ Wenn wir hier sind => Kanal ist "OK" und wird übernommen
         job.progress.passedLanguage++;
@@ -1873,6 +1801,8 @@ async function runJobVorgefiltertToCode(jobId) {
                 // ✅ dynamisch: wir loggen den *tatsächlichen* minDistinct für dieses Doc:
                 `deutschWordsDistinctTotal>=${germanRes.minDistinct} (dynamic: ceil(totalWords/${wordsPerRequiredGerman}) clamped ${minGermanWordsBase}..${maxGermanWordsCap})`,
                 `kidsHardRejectIfDistinctGte=${kidsDistinctThreshold} (found=${kidsRes.hitsDistinct})`,
+                `addictionHardRejectIfDistinctGte=${addictionDistinctThreshold} (found=${addictionRes.hitsDistinct})`,
+                `descriptionChars>=${descRes.minChars} (found=${descRes.length})`,
               ],
 
               failedReason: "",
@@ -1905,6 +1835,17 @@ async function runJobVorgefiltertToCode(jobId) {
                 hitsDistinct: kidsRes.hitsDistinct,
                 hitsTotal: kidsRes.hitsTotal,
                 matches: kidsRes.matches,
+              },
+              // ✅ NEU (genau wie kidsHardCheck, nur mit addictionRes):
+              addictionHardCheck: {
+                rule: {
+                  rejectIfDistinctGte: addictionDistinctThreshold,
+                  passIfDistinctLt: addictionDistinctThreshold,
+                },
+                distinctThreshold: addictionRes.distinctThreshold,
+                hitsDistinct: addictionRes.hitsDistinct,
+                hitsTotal: addictionRes.hitsTotal,
+                matches: addictionRes.matches,
               },
             },
           };

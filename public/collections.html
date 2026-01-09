@@ -101,6 +101,30 @@
           <br />
           Details (Description + Videos) werden erst beim Klick auf ▶ geladen.
         </p>
+
+        <!-- ✅ Job Monitor (optional via ?jobId=...) -->
+        <div id="jobBox" class="card" style="margin-top: 12px; display: none">
+          <div class="sidebar__head" style="padding: 12px 12px 0 12px">
+            <h2 style="margin: 0; font-size: 16px">Job Monitor</h2>
+          </div>
+
+          <div style="padding: 12px">
+            <div
+              id="jobMeta"
+              class="muted small mono"
+              style="margin-bottom: 10px"
+            ></div>
+
+            <div
+              id="jobStats"
+              style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px"
+            ></div>
+
+            <div class="muted small" style="margin-top: 10px">
+              Tipp: Öffne diese Seite mit <span class="mono">?jobId=...</span>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <!-- =======================================================
@@ -426,7 +450,7 @@
         btn.textContent = "…";
 
         // Details API aufrufen:
-        // GET /api/collection/vorgefiltert/item/:youtubeId
+        // GET /api/collection/:name/item/:youtubeId
         const detailsUrl = `/api/collection/${encodeURIComponent(
           state.current
         )}/item/${encodeURIComponent(youtubeId)}`;
@@ -635,15 +659,105 @@
         await loadCollectionData();
       });
 
+      /* =========================================================
+         ✅ JOB MONITOR (optional via ?jobId=...)
+         - Pollt /api/jobs/:jobId alle 2s
+         - Zeigt progress counters inkl. skippedEmptyDescription
+         ========================================================= */
+
+      function renderStat(label, value) {
+        return `
+          <div style="border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px;">
+            <div class="muted small">${escapeHtml(label)}</div>
+            <div class="mono" style="font-size: 14px; margin-top: 2px;">
+              ${escapeHtml(value)}
+            </div>
+          </div>
+        `;
+      }
+
+      function updateJobBox(job) {
+        const box = $("jobBox");
+        const meta = $("jobMeta");
+        const stats = $("jobStats");
+
+        if (!job || !job.ok) {
+          box.style.display = "block";
+          meta.textContent = "Job nicht gefunden / Fehler.";
+          stats.innerHTML = "";
+          return;
+        }
+
+        box.style.display = "block";
+
+        meta.textContent = `jobId=${job.jobId} • status=${
+          job.status
+        } • createdAt=${fmtDate(job.createdAt)} • finishedAt=${fmtDate(
+          job.finishedAt
+        )}`;
+
+        const p = job.progress || {};
+
+        stats.innerHTML = [
+          renderStat("channelsTotal", p.channelsTotal ?? 0),
+          renderStat("channelsDone", p.channelsDone ?? 0),
+
+          renderStat("scanned", p.scanned ?? 0),
+          renderStat("saved", p.saved ?? 0),
+
+          renderStat("ytAboutOk", p.ytAboutOk ?? 0),
+          renderStat("ytAboutFailed", p.ytAboutFailed ?? 0),
+
+          renderStat("ytVideosOk", p.ytVideosOk ?? 0),
+          renderStat("ytVideosFailed", p.ytVideosFailed ?? 0),
+
+          renderStat("skippedNotDeutschland", p.skippedNotDeutschland ?? 0),
+          renderStat("skippedBadChars", p.skippedBadChars ?? 0),
+
+          renderStat("skippedNotGerman", p.skippedNotGerman ?? 0),
+          renderStat("skippedKidsHard", p.skippedKidsHard ?? 0),
+
+          renderStat("skippedAddictionHard", p.skippedAddictionHard ?? 0),
+          renderStat("deletedSaved", p.deletedSaved ?? 0),
+
+          // ✅ NEU: dein Description-Check Counter (wenn du ihn im Server setzt)
+          renderStat("skippedEmptyDescription", p.skippedEmptyDescription ?? 0),
+
+          renderStat("errors", p.errors ?? 0),
+        ].join("");
+      }
+
+      async function loadJob(jobId) {
+        const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+        const data = await res.json();
+        updateJobBox(data);
+      }
+
+      function initJobMonitorFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const jobId = params.get("jobId");
+        if (!jobId) return;
+
+        // erstes Laden
+        loadJob(jobId);
+
+        // polling
+        setInterval(() => loadJob(jobId), 2000);
+      }
+
       /**
        * INIT:
        * - Collections laden
        * - danach Daten laden
+       * - Job Monitor (optional)
        */
       (async () => {
         try {
           await loadCollections();
           await loadCollectionData();
+
+          // ✅ Optionaler Job-Monitor via ?jobId=...
+          initJobMonitorFromQuery();
         } catch (e) {
           $("subtitle").textContent = "Fehler: " + (e?.message || String(e));
         }
