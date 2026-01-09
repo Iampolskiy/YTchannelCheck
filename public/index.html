@@ -12,8 +12,8 @@
       ==========================================================
       TOPBAR / HEADER
       ==========================================================
-      - Nur UI: Titel + Link zu "Collections ansehen"
-      - Der Server läuft lokal auf http://localhost:3000
+      - Nur UI: Titel + Links
+      - WICHTIG: Link zu /adjust ist schon da ✅
     -->
     <header class="topbar">
       <div class="container topbar__inner">
@@ -25,6 +25,7 @@
         </div>
 
         <div class="topbar__right">
+          <a href="/adjust" class="btn btn--ghost">Einstellungen</a>
           <a href="/collections" class="btn">Collections ansehen</a>
           <span class="pill">Server: <b>http://localhost:3000</b></span>
         </div>
@@ -32,26 +33,6 @@
     </header>
 
     <main class="container">
-      <!--
-        ==========================================================
-        HERO / ERKLÄRUNG OBEN
-        ==========================================================
-        Du hast ZWEI Wege um Prozess 1 zu starten:
-
-        (A) NORMAL (sb-html):
-            - Du lädst SocialBlade HTML-Dateien hoch (Upload).
-            - Sie landen in /input.
-            - Dann klickst du "Start Prozess 1 (input → ungefiltert)"
-              -> Server liest HTML-Dateien aus /input.
-
-        (B) SPEZIAL (sb-special):
-            - Du hast fertige SocialBlade-Linklisten (Textdateien) in /inputYT.
-            - Du klickst "Start Prozess 1 (inputYT → ungefiltert)"
-              -> Server liest Linklisten aus /inputYT und extrahiert daraus SocialBlade URLs.
-
-        Danach startest du Prozess 2:
-            - (ungefiltert → vorgefiltertCode) mit deinen Regeln
-      -->
       <section class="hero">
         <h1>Import & Prüfung von YouTube-Kanälen</h1>
         <p>
@@ -62,15 +43,6 @@
       </section>
 
       <section class="grid">
-        <!--
-          ==========================================================
-          OPTION 1 CARD
-          ==========================================================
-          - Upload von SocialBlade HTML
-          - Start Prozess 1 im NORMAL-Modus
-          - Start Prozess 1 im SPEZIAL-Modus (inputYT)
-          - Start Prozess 2 (Filter-Regeln)
-        -->
         <div class="card card--full">
           <div class="card__head">
             <h2>Option 1 (SocialBlade)</h2>
@@ -99,30 +71,12 @@
 
           <div class="divider"></div>
 
-          <!--
-            ==========================================================
-            PROZESS 1 (NORMAL)
-            ==========================================================
-            - Startet den Server-Endpunkt /process/sb-html-to-db
-            - Body: { inputMode: "sb-html" } oder einfach {}
-            - Server nutzt dann DEFAULT_INPUT_DIR (/input)
-          -->
           <button id="btnProcessSbToDb" class="btn btn--success btn--wide">
             Start Prozess 1 (input → ungefiltert)
           </button>
 
           <div class="divider"></div>
 
-          <!--
-            ==========================================================
-            PROZESS 1 (SPEZIAL: inputYT)
-            ==========================================================
-            - Startet den GLEICHEN Endpunkt: /process/sb-html-to-db
-            - ABER mit Body:
-                { inputMode: "sb-special", inputDir: "inputYT" }
-            - Dadurch nutzt dein runJob() den Spezial-Branch
-              und liest Linklisten aus /inputYT.
-          -->
           <button
             id="btnProcessSbToDbInputYT"
             class="btn btn--success btn--wide"
@@ -132,18 +86,6 @@
 
           <div class="divider"></div>
 
-          <!--
-            ==========================================================
-            PROZESS 2 (FILTER: ungefiltert → vorgefiltertCode)
-            ==========================================================
-            WICHTIG: Die Options-Namen müssen zu deiner server.js passen.
-
-            In deiner server.js heißen die Parameter:
-              - minDistinctGermanWordsTotal
-              - maxBadCharsDistinctPerField
-
-            (Nicht mehr: minDistinctGermanWords)
-          -->
           <button
             id="btnProcessVorgefiltertToCode"
             class="btn btn--success btn--wide"
@@ -161,13 +103,6 @@
         </div>
       </section>
 
-      <!--
-        ==========================================================
-        STATUS + OUTPUT PANEL
-        ==========================================================
-        - Status zeigt dir "Bereit / Work / Ok / Warn / Error"
-        - Output zeigt JSON Boxen + Live Logs
-      -->
       <section class="panel">
         <div class="panel__head">
           <h3>Status & Ergebnis</h3>
@@ -204,12 +139,62 @@
     <script>
       /**
        * ==========================================================
+       * WICHTIG: Verbindung zu adjust.html (localStorage)
+       * ==========================================================
+       * adjust.html speichert in localStorage unter diesem Key:
+       *   OPTIONS_KEY = "ytcheck_options_v1"
+       *
+       * index.html lädt diese Settings beim Start von Prozess 2
+       * und sendet sie 1:1 an:
+       *   POST /process/ungefiltert-to-vorgefiltertCode
+       */
+      const OPTIONS_KEY = "ytcheck_options_v1";
+
+      /**
+       * Defaults (falls noch nichts gespeichert ist).
+       * Diese Werte sind IDENTISCH zu adjust.html.
+       */
+      const DEFAULTS = {
+        minDescriptionChars: 10,
+        maxBadCharsDistinctPerField: 3,
+
+        minGermanWordsBase: 3,
+        wordsPerRequiredGerman: 80,
+        maxGermanWordsCap: 25,
+
+        kidsHardDistinctThreshold: 2,
+        addictionHardDistinctThreshold: 2,
+        combatSportsDistinctThreshold: 2,
+
+        writeDeletedChannels: true,
+        dryRun: false,
+        limit: 0,
+      };
+
+      function safeParseJson(raw) {
+        try {
+          const obj = JSON.parse(raw);
+          return obj && typeof obj === "object" ? obj : null;
+        } catch {
+          return null;
+        }
+      }
+
+      /**
+       * loadSavedOptions():
+       * - holt die gespeicherten Settings aus localStorage
+       * - merged sie über DEFAULTS (damit nie Keys fehlen)
+       */
+      function loadSavedOptions() {
+        const raw = localStorage.getItem(OPTIONS_KEY);
+        const parsed = raw ? safeParseJson(raw) : null;
+        return { ...DEFAULTS, ...(parsed || {}) };
+      }
+
+      /**
+       * ==========================================================
        * UI-HELPER
        * ==========================================================
-       * - $() spart Tipparbeit bei document.getElementById
-       * - setStatus(...) setzt Klasse + Texte in der Statusbox
-       * - escapeHtml(...) schützt vor HTML-Injection im Output (wichtig)
-       * - renderJsonBox(...) rendert JSON schön als Box
        */
       const $ = (id) => document.getElementById(id);
 
@@ -242,8 +227,6 @@
        * ==========================================================
        * UPLOAD OPTION 1 (HTML → /input)
        * ==========================================================
-       * - Frontend sendet FormData an /upload/option1
-       * - Server speichert Dateien in DEFAULT_INPUT_DIR (/input)
        */
       $("btnUpload1").addEventListener("click", async () => {
         const input = $("filesOption1");
@@ -292,14 +275,6 @@
        * ==========================================================
        * JOB STARTER (wiederverwendbar)
        * ==========================================================
-       * startJob(endpoint, bodyObj)
-       * - POSTet JSON an endpoint
-       * - Server antwortet mit jobId + stream URL
-       * - Wir öffnen EventSource /api/jobs/:jobId/stream
-       * - Wir zeigen live:
-       *    - Step
-       *    - Progress
-       *    - Logs
        */
       async function startJob(endpoint, bodyObj) {
         setStatus(
@@ -308,7 +283,6 @@
           "Job wird gestartet… (Live-Logs folgen)"
         );
 
-        // Live-Log Box oben einfügen
         const logBoxId = "liveLogBox";
         const liveBoxHtml = `
           <div class="box" id="${logBoxId}">
@@ -337,6 +311,11 @@
         let es = null;
 
         try {
+          // ✅ Für Debug super hilfreich: was senden wir wirklich?
+          appendLog(
+            "[client] Sende Options: " + JSON.stringify(bodyObj || {}, null, 0)
+          );
+
           const res = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -403,7 +382,8 @@
             appendLog("[client] SSE Verbindung unterbrochen (onerror).");
         } catch (e) {
           setStatus("err", "Prozess Fehler ❌", e.message);
-          appendLog(`[client] ERROR: ${e.message}`);
+          if (jobLogsEl)
+            jobLogsEl.textContent += `[client] ERROR: ${e.message}\n`;
           if (es) es.close();
         }
       }
@@ -412,15 +392,10 @@
        * ==========================================================
        * PROZESS 1 (NORMAL /input)
        * ==========================================================
-       * - Du hast zwei Möglichkeiten, beide funktionieren:
-       *    1) {} senden (Server default: sb-html + /input)
-       *    2) explizit inputMode: "sb-html" senden
-       * - Ich sende hier explizit, damit es klar ist.
        */
       $("btnProcessSbToDb").addEventListener("click", async () => {
         await startJob("/process/sb-html-to-db", {
           inputMode: "sb-html",
-          // inputDir NICHT setzen -> server nutzt DEFAULT_INPUT_DIR (= /input)
         });
       });
 
@@ -428,11 +403,6 @@
        * ==========================================================
        * PROZESS 1 (SPEZIAL /inputYT)
        * ==========================================================
-       * - Der Server braucht:
-       *    inputMode: "sb-special"
-       *    inputDir: "inputYT"
-       * - Dann nimmt runJob() automatisch den Spezial-Branch und
-       *   ruft loadChannelsFromSbLinkFolder(...) auf.
        */
       $("btnProcessSbToDbInputYT").addEventListener("click", async () => {
         await startJob("/process/sb-html-to-db", {
@@ -442,27 +412,15 @@
 
       /**
        * ==========================================================
-       * PROZESS 2 (ungefiltert → vorgefiltertCode)
+       * ✅ PROZESS 2 (ungefiltert → vorgefiltertCode)
        * ==========================================================
-       * WICHTIG: Deine server.js erwartet diese Options-Namen:
-       *   - minDistinctGermanWordsTotal
-       *   - maxBadCharsDistinctPerField
-       *
-       * Deshalb setzen wir die hier korrekt.
+       * DER ENTSCHEIDENDE FIX:
+       * - Wir laden die gespeicherten Options aus adjust.html
+       * - Und senden sie an den Server
        */
       $("btnProcessVorgefiltertToCode").addEventListener("click", async () => {
-        await startJob("/process/ungefiltert-to-vorgefiltertCode", {
-          // ✅ korrekte Namen für deine server.js:
-          minDistinctGermanWordsTotal: 4,
-          maxBadCharsDistinctPerField: 3,
-
-          dryRun: false,
-          limit: 0,
-
-          // Optional:
-          // deutschArray: [...],
-          // badCharArray: [...],
-        });
+        const saved = loadSavedOptions();
+        await startJob("/process/ungefiltert-to-vorgefiltertCode", saved);
       });
 
       /**

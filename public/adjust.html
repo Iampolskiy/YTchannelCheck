@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Einstellungen – YouTube Channel Check</title>
+
+    <!--
+      Wir verwenden deine vorhandene styles.css,
+      damit Buttons / Cards / Layout gleich aussehen wie in index.html.
+    -->
+    <link rel="stylesheet" href="/styles.css" />
+
+    <style>
+      /* Kleine Zusatz-Styles nur für diese Seite */
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 980px) {
+        .grid2 {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+        margin: 10px 0;
+      }
+
+      .field label {
+        font-weight: 600;
+      }
+
+      .help {
+        font-size: 12px;
+        opacity: 0.8;
+        line-height: 1.4;
+      }
+
+      .inputRow {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .inputRow .input {
+        flex: 1;
+      }
+
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+      }
+
+      .pillSmall {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 12px;
+        opacity: 0.85;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .jsonBox {
+        max-height: 360px;
+        overflow: auto;
+      }
+
+      .warnBox {
+        border: 1px solid rgba(255, 180, 0, 0.25);
+        background: rgba(255, 180, 0, 0.08);
+        padding: 10px;
+        border-radius: 12px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- =========================================================
+         TOPBAR
+         ========================================================= -->
+    <header class="topbar">
+      <div class="container topbar__inner">
+        <div class="brand">
+          <div class="brand__text">
+            <div class="brand__title">Einstellungen</div>
+            <div class="brand__subtitle">
+              Speichert lokal im Browser (localStorage)
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar__right">
+          <a href="/" class="btn btn--ghost">← Zurück</a>
+          <span class="pill">Key: <b class="mono">ytcheck_options_v1</b></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- =========================================================
+           Erklärung
+           ========================================================= -->
+      <section class="hero">
+        <h1>Alle Optionen an einem Ort</h1>
+        <p>
+          Diese Seite speichert deine Einstellungen in deinem Browser (<span
+            class="mono"
+            >localStorage</span
+          >). <br />
+          <b>index.html</b> kann die Werte später beim Start von Prozess 2 laden
+          und mitsenden – ohne dass du dort viele Inputs brauchst.
+        </p>
+
+        <div class="warnBox">
+          <b>Wichtig:</b> Das sind nur gespeicherte UI-Werte. <br />
+          Damit sie “wirken”, muss index.html beim Start von Prozess 2 die
+          gespeicherten Optionen auslesen und an
+          <span class="mono">/process/ungefiltert-to-vorgefiltertCode</span>
+          mitsenden. (Das ist genau die Idee: Settings hier, Start dort.)
+        </div>
+      </section>
+
+      <section class="grid2">
+        <!-- =========================================================
+             CARD: Prozess 2 Settings
+             ========================================================= -->
+        <div class="card">
+          <div class="card__head">
+            <h2>Prozess 2 – Filter-Regeln</h2>
+            <span id="statusPill" class="pillSmall">Status: —</span>
+          </div>
+
+          <!--
+            =========================================================
+            1) Description Mindestlänge
+            =========================================================
+            WICHTIG:
+            Dein server.js verwendet in deinem Code aktuell:
+              descriptionNotEmptyCheck(doc, { minChars: DEFAULT_MIN_DESCRIPTION_CHARS })
+            Damit die UI wirklich steuern kann, sollte server.js später:
+              minChars: options.minDescriptionChars ?? DEFAULT_MIN_DESCRIPTION_CHARS
+            verwenden.
+
+            Wir speichern hier "minDescriptionChars".
+          -->
+          <div class="field">
+            <label for="minDescriptionChars">minDescriptionChars</label>
+            <div class="inputRow">
+              <input
+                id="minDescriptionChars"
+                class="input"
+                type="number"
+                min="0"
+                step="1"
+              />
+              <span class="pillSmall mono">Default: 10</span>
+            </div>
+            <div class="help">
+              Mindestanzahl Zeichen in der Channel-Description. <br />
+              Wenn Description zu kurz ist → Kanal fliegt raus (<span
+                class="mono"
+                >description_empty_or_too_short</span
+              >).
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!--
+            =========================================================
+            2) BadChars distinct per field
+            =========================================================
+            server.js liest:
+              options.maxBadCharsDistinctPerField
+          -->
+          <div class="field">
+            <label for="maxBadCharsDistinctPerField"
+              >maxBadCharsDistinctPerField</label
+            >
+            <div class="inputRow">
+              <input
+                id="maxBadCharsDistinctPerField"
+                class="input"
+                type="number"
+                min="0"
+                step="1"
+              />
+              <span class="pillSmall mono">Default: 3</span>
+            </div>
+            <div class="help">
+              Wenn EIN Feld (title/description/video title) mehr als X
+              <b>verschiedene</b> “bad chars” enthält → raus.
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!--
+            =========================================================
+            3) Dynamische Deutsch-Wörter-Regel
+            =========================================================
+            server.js nutzt:
+              minGermanWordsBase
+              wordsPerRequiredGerman
+              maxGermanWordsCap
+          -->
+          <div class="field">
+            <label for="minGermanWordsBase">minGermanWordsBase</label>
+            <div class="inputRow">
+              <input
+                id="minGermanWordsBase"
+                class="input"
+                type="number"
+                min="0"
+                step="1"
+              />
+              <span class="pillSmall mono">Default: 3</span>
+            </div>
+            <div class="help">
+              Untergrenze für die dynamische Deutsch-Wörter-Regel (distinct).
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="wordsPerRequiredGerman">wordsPerRequiredGerman</label>
+            <div class="inputRow">
+              <input
+                id="wordsPerRequiredGerman"
+                class="input"
+                type="number"
+                min="1"
+                step="1"
+              />
+              <span class="pillSmall mono">Default: 80</span>
+            </div>
+            <div class="help">
+              Pro wie viele Wörter im Kanaltext braucht man 1 deutsches Wort
+              (distinct). Beispiel: 80 → bei 241 Wörtern: ceil(241/80)=4.
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="maxGermanWordsCap">maxGermanWordsCap</label>
+            <div class="inputRow">
+              <input
+                id="maxGermanWordsCap"
+                class="input"
+                type="number"
+                min="0"
+                step="1"
+              />
+              <span class="pillSmall mono">Default: 25</span>
+            </div>
+            <div class="help">
+              Obergrenze (Cap), damit extrem lange Kanäle nicht “unmöglich”
+              werden.
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!--
+            =========================================================
+            4) Themen-Checks thresholds (distinct)
+            =========================================================
+            server.js nutzt:
+              kidsHardDistinctThreshold
+              addictionHardDistinctThreshold
+              combatSportsDistinctThreshold
+          -->
+          <div class="field">
+            <label for="kidsHardDistinctThreshold"
+              >kidsHardDistinctThreshold</label
+            >
+            <div class="inputRow">
+              <input
+                id="kidsHardDistinctThreshold"
+                class="input"
+                type="number"
+                min="0"
+                step="1"
+              />
+              <span class="pillSmall mono">Default: 2</span>
+            </div>
+            <div class="help">
+              Ab wie vielen <b>distinct</b> Kids-Phrasen wird rausgefiltert.
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="addictionHardDistinctThreshold"
+              >addictionHardDistinctThreshold</label
+            >
+            <div class="inputRow">
+              <input
+                id="addictionHardDistinctThreshold"
+                class="input"
+                type="number"
+                min="0"
+                step="1"
+              />
+              <span class="pillSmall mono">Default: 2</span>
+            </div>
+            <div class="help">
+              Ab wie vielen <b>distinct</b> Sucht-Phrasen wird rausgefiltert.
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="combatSportsDistinctThreshold"
+              >combatSportsDistinctThreshold</label
+            >
+            <div class="inputRow">
+              <input
+                id="combatSportsDistinctThreshold"
+                class="input"
+                type="number"
+                min="0"
+                step="1"
+              />
+              <span class="pillSmall mono">Default: 2</span>
+            </div>
+            <div class="help">
+              Ab wie vielen <b>distinct</b> Kampfsport-Phrasen wird
+              rausgefiltert.
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!--
+            =========================================================
+            5) Job-Optionen
+            =========================================================
+            server.js nutzt:
+              writeDeletedChannels (default true)
+              dryRun (default false)
+              limit (default 0 = ALL)
+          -->
+          <div class="field">
+            <label>
+              <input id="writeDeletedChannels" type="checkbox" />
+              writeDeletedChannels (empfohlen)
+            </label>
+            <div class="help">
+              Wenn aktiv, werden rausgefilterte Kanäle in
+              <span class="mono">deletedChannels</span> gespeichert.
+            </div>
+          </div>
+
+          <div class="field">
+            <label>
+              <input id="dryRun" type="checkbox" />
+              dryRun (nur testen, nichts schreiben)
+            </label>
+            <div class="help">
+              Wenn aktiv, wird Prozess 2 NICHT in vorgefiltertCode speichern
+              (nur Logs).
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="limit">limit</label>
+            <div class="inputRow">
+              <input id="limit" class="input" type="number" min="0" step="1" />
+              <span class="pillSmall mono">Default: 0 (=ALL)</span>
+            </div>
+            <div class="help">
+              0 bedeutet “alle Dokumente”. Jede andere Zahl begrenzt die Menge.
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Actions -->
+          <div class="actions">
+            <button id="btnSave" class="btn btn--primary">Speichern</button>
+            <button id="btnReset" class="btn btn--ghost">Reset</button>
+            <button id="btnLoad" class="btn btn--ghost">Neu laden</button>
+          </div>
+
+          <div class="hint">
+            Speichern schreibt in localStorage. Reset löscht localStorage und
+            setzt Defaults.
+          </div>
+        </div>
+
+        <!-- =========================================================
+             CARD: Live Preview + Hilfe
+             ========================================================= -->
+        <div class="card">
+          <div class="card__head">
+            <h2>Preview (was wirklich gespeichert wird)</h2>
+            <span class="pillSmall">JSON</span>
+          </div>
+
+          <p class="muted">
+            Wenn du “Speichern” klickst, siehst du hier exakt das Objekt, das
+            index.html später an Prozess 2 schicken soll.
+          </p>
+
+          <div class="divider"></div>
+
+          <div class="box">
+            <div class="box__title">Gespeicherte Optionen</div>
+            <pre id="jsonPreview" class="code jsonBox">—</pre>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="box">
+            <div class="box__title">So nutzt index.html das</div>
+            <pre class="code">
+const raw = localStorage.getItem("ytcheck_options_v1");
+const saved = raw ? JSON.parse(raw) : {};
+startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false });
+            </pre>
+            <div class="help">
+              (Du willst index.html so lassen – ok. Dann muss nur dein Startcode
+              später die saved-Optionen mergen.)
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer__inner">
+        <span class="muted">© YouTubeChannelCheck</span>
+        <span class="muted">Einstellungen lokal im Browser gespeichert</span>
+      </div>
+    </footer>
+
+    <script>
+      /**
+       * ==========================================================
+       * adjust.html – komplette Einstellungsseite
+       * ==========================================================
+       *
+       * Ziel:
+       * - Alle Optionen an einem Ort bearbeiten
+       * - In localStorage speichern
+       * - index.html kann später diese Optionen laden und an den Server senden
+       *
+       * Wichtig:
+       * - localStorage ist pro Browser/PC
+       * - Wenn du anderen Browser nutzt, sind die Werte dort nicht da
+       */
+
+      const OPTIONS_KEY = "ytcheck_options_v1";
+      const $ = (id) => document.getElementById(id);
+
+      /**
+       * Defaults: Diese Werte werden verwendet, wenn noch nichts gespeichert ist
+       * oder wenn Reset gedrückt wird.
+       */
+      const DEFAULTS = {
+        // Prozess 2:
+        minDescriptionChars: 10,
+        maxBadCharsDistinctPerField: 3,
+
+        minGermanWordsBase: 3,
+        wordsPerRequiredGerman: 80,
+        maxGermanWordsCap: 25,
+
+        kidsHardDistinctThreshold: 2,
+        addictionHardDistinctThreshold: 2,
+        combatSportsDistinctThreshold: 2,
+
+        writeDeletedChannels: true,
+        dryRun: false,
+        limit: 0,
+      };
+
+      function setStatus(text) {
+        $("statusPill").textContent = text;
+      }
+
+      function safeParseJson(raw) {
+        try {
+          const obj = JSON.parse(raw);
+          return obj && typeof obj === "object" ? obj : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function loadOptions() {
+        const raw = localStorage.getItem(OPTIONS_KEY);
+        if (!raw) return { ...DEFAULTS };
+        const parsed = safeParseJson(raw);
+        if (!parsed) return { ...DEFAULTS };
+        // merge: gespeicherte Werte überschreiben Defaults
+        return { ...DEFAULTS, ...parsed };
+      }
+
+      function saveOptions(obj) {
+        localStorage.setItem(OPTIONS_KEY, JSON.stringify(obj, null, 2));
+      }
+
+      function toInt(value, fallback) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.floor(n);
+      }
+
+      function readForm() {
+        return {
+          minDescriptionChars: toInt(
+            $("minDescriptionChars").value,
+            DEFAULTS.minDescriptionChars
+          ),
+          maxBadCharsDistinctPerField: toInt(
+            $("maxBadCharsDistinctPerField").value,
+            DEFAULTS.maxBadCharsDistinctPerField
+          ),
+
+          minGermanWordsBase: toInt(
+            $("minGermanWordsBase").value,
+            DEFAULTS.minGermanWordsBase
+          ),
+          wordsPerRequiredGerman: toInt(
+            $("wordsPerRequiredGerman").value,
+            DEFAULTS.wordsPerRequiredGerman
+          ),
+          maxGermanWordsCap: toInt(
+            $("maxGermanWordsCap").value,
+            DEFAULTS.maxGermanWordsCap
+          ),
+
+          kidsHardDistinctThreshold: toInt(
+            $("kidsHardDistinctThreshold").value,
+            DEFAULTS.kidsHardDistinctThreshold
+          ),
+          addictionHardDistinctThreshold: toInt(
+            $("addictionHardDistinctThreshold").value,
+            DEFAULTS.addictionHardDistinctThreshold
+          ),
+          combatSportsDistinctThreshold: toInt(
+            $("combatSportsDistinctThreshold").value,
+            DEFAULTS.combatSportsDistinctThreshold
+          ),
+
+          writeDeletedChannels: Boolean($("writeDeletedChannels").checked),
+          dryRun: Boolean($("dryRun").checked),
+          limit: Math.max(0, toInt($("limit").value, DEFAULTS.limit)),
+        };
+      }
+
+      function fillForm(obj) {
+        $("minDescriptionChars").value = obj.minDescriptionChars;
+        $("maxBadCharsDistinctPerField").value =
+          obj.maxBadCharsDistinctPerField;
+
+        $("minGermanWordsBase").value = obj.minGermanWordsBase;
+        $("wordsPerRequiredGerman").value = obj.wordsPerRequiredGerman;
+        $("maxGermanWordsCap").value = obj.maxGermanWordsCap;
+
+        $("kidsHardDistinctThreshold").value = obj.kidsHardDistinctThreshold;
+        $("addictionHardDistinctThreshold").value =
+          obj.addictionHardDistinctThreshold;
+        $("combatSportsDistinctThreshold").value =
+          obj.combatSportsDistinctThreshold;
+
+        $("writeDeletedChannels").checked = obj.writeDeletedChannels;
+        $("dryRun").checked = obj.dryRun;
+        $("limit").value = obj.limit;
+      }
+
+      function renderPreview(obj) {
+        $("jsonPreview").textContent = JSON.stringify(obj, null, 2);
+      }
+
+      // Live-Preview: bei jeder Änderung aktualisieren (ohne zu speichern)
+      function attachLivePreview() {
+        const ids = [
+          "minDescriptionChars",
+          "maxBadCharsDistinctPerField",
+          "minGermanWordsBase",
+          "wordsPerRequiredGerman",
+          "maxGermanWordsCap",
+          "kidsHardDistinctThreshold",
+          "addictionHardDistinctThreshold",
+          "combatSportsDistinctThreshold",
+          "writeDeletedChannels",
+          "dryRun",
+          "limit",
+        ];
+
+        for (const id of ids) {
+          const el = $(id);
+          if (!el) continue;
+          el.addEventListener("input", () => {
+            const current = readForm();
+            renderPreview(current);
+            setStatus("Status: nicht gespeichert");
+          });
+          el.addEventListener("change", () => {
+            const current = readForm();
+            renderPreview(current);
+            setStatus("Status: nicht gespeichert");
+          });
+        }
+      }
+
+      // Buttons
+      $("btnSave").addEventListener("click", () => {
+        const obj = readForm();
+        saveOptions(obj);
+        renderPreview(obj);
+        setStatus("Status: gespeichert ✅");
+      });
+
+      $("btnReset").addEventListener("click", () => {
+        localStorage.removeItem(OPTIONS_KEY);
+        const fresh = { ...DEFAULTS };
+        fillForm(fresh);
+        renderPreview(fresh);
+        setStatus("Status: zurückgesetzt ✅");
+      });
+
+      $("btnLoad").addEventListener("click", () => {
+        const loaded = loadOptions();
+        fillForm(loaded);
+        renderPreview(loaded);
+        setStatus("Status: geladen ✅");
+      });
+
+      // INIT
+      (function init() {
+        const loaded = loadOptions();
+        fillForm(loaded);
+        renderPreview(loaded);
+        setStatus("Status: geladen ✅");
+        attachLivePreview();
+      })();
+    </script>
+  </body>
+</html>

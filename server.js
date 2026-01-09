@@ -1373,6 +1373,15 @@ async function runJobVorgefiltertToCode(jobId) {
       ? Math.max(minGermanWordsBase, Math.floor(options.maxGermanWordsCap))
       : DEFAULT_MAX_GERMAN_WORDS_CAP;
 
+  /**
+   * ✅ NEU: minDescriptionChars (aus UI oder Default)
+   * Beispiel UI: { minDescriptionChars: 25 }
+   */
+  const minDescriptionChars =
+    typeof options.minDescriptionChars === "number"
+      ? Math.max(0, Math.floor(options.minDescriptionChars))
+      : DEFAULT_MIN_DESCRIPTION_CHARS;
+
   const dryRun = Boolean(options.dryRun);
 
   // limit: wie viele Docs maximal prüfen (0 oder nicht gesetzt => ALL)
@@ -1395,10 +1404,13 @@ async function runJobVorgefiltertToCode(jobId) {
     badCharArraySize: badCharArray.length,
     maxBadCharsDistinctPerField,
 
-    // ✅ NEU: dynamische Deutsch-Wörter-Settings
+    // ✅ Deutsch-Wörter-Settings
     minGermanWordsBase,
     wordsPerRequiredGerman,
     maxGermanWordsCap,
+
+    // ✅ NEU: Description Setting (damit du es im Log siehst)
+    minDescriptionChars,
 
     dryRun,
     limit: limit || "ALL",
@@ -1424,6 +1436,7 @@ async function runJobVorgefiltertToCode(jobId) {
     job.progress.skippedBadChars = 0;
     job.progress.skippedKidsHard = 0;
     job.progress.skippedAddictionHard = 0;
+    job.progress.skippedEmptyDescription = 0;
 
     job.progress.deletedSaved = 0;
     job.progress.errors = 0;
@@ -1506,14 +1519,15 @@ async function runJobVorgefiltertToCode(jobId) {
    ✅ NEU: Description-Check
    ============================ */
 
+        /* ============================
+   ✅ Description-Check (UI wirkt jetzt)
+   ============================ */
         const descRes = descriptionNotEmptyCheck(doc, {
-          minChars: DEFAULT_MIN_DESCRIPTION_CHARS,
-        }); // oder z.B. 10
-        job.progress.skippedEmptyDescription++;
+          minChars: minDescriptionChars, // ✅ kommt aus options/UI oder Default
+        });
 
         if (!descRes.ok) {
-          // (Optional) eigener Counter, wenn du willst:
-          // job.progress.skippedEmptyDescription++;
+          job.progress.skippedEmptyDescription++; // ✅ NUR zählen, wenn wir wirklich skippen
 
           emitLog(jobId, "info", "Skip: Description ist leer/zu kurz", {
             youtubeId: doc.youtubeId,
@@ -2067,6 +2081,12 @@ app.get("/api/jobs/:jobId", (req, res) => {
     enrichPreview: job.enriched.slice(-30),
     error: job.error,
   });
+});
+// ---------------------------------------------------------------------------
+// Frontend: ajust.html
+// ---------------------------------------------------------------------------
+app.get("/adjust", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "adjust.html"));
 });
 
 // ---------------------------------------------------------------------------
