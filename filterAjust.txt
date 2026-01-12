@@ -1,0 +1,130 @@
+1) minDescriptionChars
+
+Was ist das?
+Mindestlänge (in Zeichen) der Kanal-Beschreibung („About/Description“).
+
+Was passiert?
+
+Wenn die Beschreibung kürzer ist als dieser Wert → Kanal wird sofort rausgeworfen.
+
+Höher machen: strenger → mehr Kanäle fliegen raus (auch echte, die einfach wenig Text haben)
+Niedriger machen: lockerer → mehr Kanäle kommen durch (auch solche mit fast leerem Profil)
+
+2) maxBadCharsDistinctPerField
+
+Was ist das?
+Wie viele verschiedene „nicht-deutsche/komische“ Zeichen in einem Feld erlaubt sind (Titel, Beschreibung, Videotitel).
+
+Beispiel „bad chars“ (je nachdem was in deinem Array steht): 中, あ, Д, ش, etc.
+
+Was passiert?
+
+Wenn EIN Feld mehr als X verschiedene dieser Zeichen enthält → Kanal fliegt raus.
+
+Höher machen: toleranter → lässt mehr „gemischte“ oder fremdsprachige Sachen durch
+Niedriger machen: strenger → schon bei wenigen fremden Zeichen wird rausgeworfen
+
+3) minGermanWordsBase
+
+Was ist das?
+Das ist die Untergrenze für die „deutsche Wörter“-Regel.
+
+Du nutzt ja eine dynamische Regel: je mehr Text, desto mehr deutsche Wörter werden verlangt.
+Aber: egal wie wenig Text → mindestens dieser Wert an verschiedenen deutschen Wörtern wird verlangt.
+
+Höher machen: strenger, besonders bei kurzen Kanälen
+Niedriger machen: lockerer, kurze Kanäle kommen leichter durch
+
+4) wordsPerRequiredGerman
+
+Was ist das?
+Das ist der „Schritt“, der bestimmt: Wie schnell die Anforderung steigt, wenn der Kanal viel Text hat.
+
+Formel grob:
+
+pro wordsPerRequiredGerman Wörter brauchst du 1 zusätzliches distinct deutsches Wort
+
+Beispiel bei 80:
+
+1–80 Wörter → 1 deutsches Wort (wird aber durch minGermanWordsBase meist auf 3 angehoben)
+
+81–160 Wörter → 2
+
+161–240 Wörter → 3
+
+usw. (mit Cap)
+
+Höher machen (z.B. 120): lockerer bei langen Texten
+Niedriger machen (z.B. 40): strenger → lange Texte brauchen viel mehr deutsche Wörter
+
+5) maxGermanWordsCap
+
+Was ist das?
+Obergrenze für die Anzahl an verlangten deutschen Wörtern (damit es bei extrem viel Text nicht unmöglich wird).
+
+Was passiert?
+
+Egal wie lang der Text ist: es werden nie mehr als maxGermanWordsCap verschiedene deutsche Wörter verlangt.
+
+Höher machen: strenger für extrem lange Kanäle
+Niedriger machen: lockerer; verhindert, dass lange Kanäle „unfair“ scheitern
+
+6) kidsHardDistinctThreshold
+
+Was ist das?
+Wie viele verschiedene Kids-„Hard Phrases“ (aus deinem KIDS_HARD_PHRASES Array) gefunden werden müssen, damit der Kanal rausfliegt.
+
+Was passiert?
+
+Wenn der Kanal ≥ X unterschiedliche Kids-Phrasen enthält → raus.
+
+Höher machen: weniger streng (es müssen mehr Treffer da sein, bevor rausfliegt)
+Niedriger machen: sehr streng (schon bei wenigen Treffern raus)
+
+7) addictionHardDistinctThreshold
+
+Was ist das?
+Gleiche Idee wie oben, aber für Sucht / Addiction-Phrasen (ADDICTION_HARD_PHRASES).
+
+Was passiert?
+
+Wenn ≥ X unterschiedliche Sucht-Phrasen gefunden werden → raus.
+
+Höher machen: lockerer
+Niedriger machen: strenger
+
+8) combatSportsDistinctThreshold
+
+Was ist das?
+Wieder dasselbe, aber für Kampfsport/Combat-Phrasen (COMBAT_SPORTS_PHRASES).
+
+Was passiert?
+
+Wenn ≥ X unterschiedliche Kampfsport-Phrasen gefunden werden → raus.
+
+Höher machen: lockerer
+Niedriger machen: strenger
+
+9) writeDeletedChannels
+
+Was ist das?
+Ob Kanäle, die rausfliegen, zusätzlich in die Collection deletedChannels geschrieben werden.
+
+true: du behältst sie + den Grund (super zum Debuggen)
+false: sie verschwinden einfach aus Prozess 2 (du siehst nur Stats/Logs)
+
+10) dryRun
+
+Was ist das?
+„Testlauf“.
+
+true: es wird nicht nach vorgefiltertCode gespeichert (nur prüfen & loggen)
+false: normaler Betrieb → speichern in vorgefiltertCode
+
+11) limit
+
+Was ist das?
+Wie viele Dokumente aus ungefiltert überhaupt geprüft werden sollen.
+
+0: alle
+100: nur die ersten 100 (schnell zum Testen)
