@@ -470,6 +470,52 @@ code {
   border-color: rgba(79, 124, 255, 0.35);
   background: rgba(79, 124, 255, 0.14);
 }
+
+/* Drag & Drop list (Adjust: Code Filter Order) */
+.dragList {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0 0;
+  display: grid;
+  gap: 10px;
+}
+.dragItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.92);
+}
+.dragItem[aria-grabbed="true"] {
+  outline: 2px solid rgba(79, 124, 255, 0.35);
+  outline-offset: 2px;
+}
+.dragLeft {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+}
+.dragHandle {
+  font-family: var(--mono);
+  opacity: 0.65;
+  cursor: grab;
+  user-select: none;
+}
+.dragName {
+  font-weight: 800;
+}
+.input--textarea {
+  width: 100%;
+  min-width: 100%;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .footer__inner {
   padding: 14px 0;
   display: flex;

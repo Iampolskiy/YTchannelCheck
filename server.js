@@ -181,6 +181,8 @@ const KIDS_HARD_PHRASES_DISTINCT_AMOUNT_NR = 2;
 const ADDICTION_HARD_PHRASES_DISTINCT_AMOUNT_NR = 2;
 const COMBAT_SPORTS_PHRASES_DISTINCT_AMOUNT_NR = 2;
 
+const DEFAULT_CODE_FILTER_ORDER = ["kidsHard", "addictionHard", "combatSports"];
+
 // ---------------------------------------------------------------------------
 // Hilfsfunktion: Gelöschte Kanäle protokollieren
 async function recordDeletedChannel({ jobId, doc, reason, details }) {
@@ -451,6 +453,7 @@ function createJob({ options }) {
       skippedBadChars: 0,
       skippedKidsHard: 0,
       skippedAddictionHard: 0,
+      skippedCombatSports: 0,
       skippedEmptyDescription: 0,
       // ✅ wie viele wurden in deletedChannels geschrieben
       deletedSaved: 0,
@@ -1710,148 +1713,210 @@ async function runJobVorgefiltertToCode(jobId) {
           );
         }
 
-        // 4) Kids-Inhalt Check
-        const kidsDistinctThreshold =
+        // -------------------------------------------------------------------
+        // ✅ Code Filter (Kids / Addiction / CombatSports) – Reihenfolge + Wörter
+        //     kommen aus Adjust UI (options.*), sonst Defaults.
+        // -------------------------------------------------------------------
+
+        function normalizeOrder(order) {
+          const raw = Array.isArray(order) ? order : [];
+          const cleaned = raw
+            .map((x) => String(x || "").trim())
+            .filter(Boolean)
+            .filter((x) => DEFAULT_CODE_FILTER_ORDER.includes(x));
+          // unique
+          const uniq = [];
+          const seen = new Set();
+          for (const x of cleaned) {
+            if (seen.has(x)) continue;
+            seen.add(x);
+            uniq.push(x);
+          }
+          // ensure all exist
+          for (const x of DEFAULT_CODE_FILTER_ORDER) {
+            if (!seen.has(x)) uniq.push(x);
+          }
+          return uniq;
+        }
+
+        const codeFilterOrder = normalizeOrder(options.codeFilterOrder);
+        const enabledMap =
+          options.codeFilterEnabled &&
+          typeof options.codeFilterEnabled === "object"
+            ? options.codeFilterEnabled
+            : {};
+
+        function isEnabled(id) {
+          // default: enabled
+          return enabledMap[id] !== false;
+        }
+
+        function pickPhrases({ id, useDefaultKey, phrasesKey, defaults }) {
+          const useDefault = options?.[useDefaultKey];
+          if (useDefault === false) {
+            // custom (kann auch leer sein, dann "keine phrases")
+            return Array.isArray(options?.[phrasesKey])
+              ? options[phrasesKey]
+              : [];
+          }
+          return defaults;
+        }
+
+        const phrasesKids = pickPhrases({
+          id: "kidsHard",
+          useDefaultKey: "kidsHardPhrasesUseDefault",
+          phrasesKey: "kidsHardPhrases",
+          defaults: KIDS_HARD_PHRASES,
+        });
+        const phrasesAddiction = pickPhrases({
+          id: "addictionHard",
+          useDefaultKey: "addictionHardPhrasesUseDefault",
+          phrasesKey: "addictionHardPhrases",
+          defaults: ADDICTION_HARD_PHRASES,
+        });
+        const phrasesCombat = pickPhrases({
+          id: "combatSports",
+          useDefaultKey: "combatSportsPhrasesUseDefault",
+          phrasesKey: "combatSportsPhrases",
+          defaults: COMBAT_SPORTS_PHRASES,
+        });
+
+        const thresholdKids =
           typeof options.kidsHardDistinctThreshold === "number"
             ? Math.max(0, Math.floor(options.kidsHardDistinctThreshold))
             : KIDS_HARD_PHRASES_DISTINCT_AMOUNT_NR;
-
-        const kidsRes = kidsHardPhrasesCheck(
-          doc,
-          KIDS_HARD_PHRASES,
-          kidsDistinctThreshold,
-          { maxSamplesPerField: 3 }
-        );
-
-        if (!kidsRes.ok) {
-          job.progress.skippedKidsHard++;
-
-          emitLog(
-            jobId,
-            "info",
-            "Skip: Kids-Inhalt (KIDS_HARD_PHRASES) – zu viele Treffer (distinct)",
-            {
-              youtubeId: doc.youtubeId,
-              hitsDistinct: kidsRes.hitsDistinct,
-              rejectIfDistinctGte: kidsDistinctThreshold,
-              hitsTotal: kidsRes.hitsTotal,
-              matches: kidsRes.matches.slice(0, 25),
-              country: countryNorm ?? null,
-            }
-          );
-
-          if (writeDeletedChannels) {
-            await recordDeletedChannel({
-              jobId,
-              doc,
-              reason: "kids_hard_phrases_distinct_threshold_reached",
-              details: {
-                country: countryNorm ?? null,
-                rejectIfDistinctGte: kidsDistinctThreshold,
-                hitsDistinct: kidsRes.hitsDistinct,
-                hitsTotal: kidsRes.hitsTotal,
-                matches: kidsRes.matches,
-              },
-            });
-            job.progress.deletedSaved++;
-          }
-
-          continue;
-        }
-        // 5) ✅ Sucht-Inhalt Check (ADDICTION_HARD_PHRASES)
-        const addictionDistinctThreshold =
+        const thresholdAddiction =
           typeof options.addictionHardDistinctThreshold === "number"
             ? Math.max(0, Math.floor(options.addictionHardDistinctThreshold))
             : ADDICTION_HARD_PHRASES_DISTINCT_AMOUNT_NR;
-
-        const addictionRes = addictionHardPhrasesCheck(
-          doc,
-          ADDICTION_HARD_PHRASES,
-          addictionDistinctThreshold,
-          { maxSamplesPerField: 3 }
-        );
-
-        if (!addictionRes.ok) {
-          job.progress.skippedAddictionHard++;
-
-          emitLog(
-            jobId,
-            "info",
-            "Skip: Sucht-Inhalt (ADDICTION_HARD_PHRASES) – zu viele Treffer (distinct)",
-            {
-              youtubeId: doc.youtubeId,
-              hitsDistinct: addictionRes.hitsDistinct,
-              rejectIfDistinctGte: addictionDistinctThreshold,
-              hitsTotal: addictionRes.hitsTotal,
-              matches: addictionRes.matches.slice(0, 25),
-              country: countryNorm ?? null,
-            }
-          );
-
-          if (writeDeletedChannels) {
-            await recordDeletedChannel({
-              jobId,
-              doc,
-              reason: "addiction_hard_phrases_distinct_threshold_reached",
-              details: {
-                country: countryNorm ?? null,
-                rejectIfDistinctGte: addictionDistinctThreshold,
-                hitsDistinct: addictionRes.hitsDistinct,
-                hitsTotal: addictionRes.hitsTotal,
-                matches: addictionRes.matches,
-              },
-            });
-            job.progress.deletedSaved++;
-          }
-
-          continue;
-        }
-
-        /* ============================
-   ✅ NEU: Kampfsport-Check
-   ============================ */
-        const combatDistinctThreshold =
+        const thresholdCombat =
           typeof options.combatSportsDistinctThreshold === "number"
             ? Math.max(0, Math.floor(options.combatSportsDistinctThreshold))
             : COMBAT_SPORTS_PHRASES_DISTINCT_AMOUNT_NR;
 
-        const combatRes = combatSportsPhrasesCheck(
-          doc,
-          COMBAT_SPORTS_PHRASES,
-          combatDistinctThreshold,
-          { maxSamplesPerField: 3 }
-        );
+        const filterResById = {};
+        const passedRulesDynamic = [];
 
-        if (!combatRes.ok) {
-          // Optional: eigener Counter, falls du willst
-          // job.progress.skippedCombatSports++;
+        let rejectedBy = null; // { id, reason, details }
 
-          emitLog(
-            jobId,
-            "info",
-            "Skip: Kampfsport-Content (COMBAT_SPORTS_PHRASES)",
-            {
-              youtubeId: doc.youtubeId,
-              hitsDistinct: combatRes.hitsDistinct,
-              rejectIfDistinctGte: combatDistinctThreshold,
-              hitsTotal: combatRes.hitsTotal,
-              matches: combatRes.matches.slice(0, 25),
-              country: countryNorm ?? null,
+        for (const filterId of codeFilterOrder) {
+          if (!isEnabled(filterId)) {
+            passedRulesDynamic.push(`${filterId}:disabled`);
+            continue;
+          }
+
+          if (filterId === "kidsHard") {
+            const kidsRes = kidsHardPhrasesCheck(
+              doc,
+              phrasesKids,
+              thresholdKids,
+              { maxSamplesPerField: 3 }
+            );
+            filterResById.kidsHard = kidsRes;
+            passedRulesDynamic.push(
+              `kidsHardRejectIfDistinctGte=${thresholdKids} (found=${kidsRes.hitsDistinct})`
+            );
+
+            if (!kidsRes.ok) {
+              job.progress.skippedKidsHard++;
+              rejectedBy = {
+                id: "kidsHard",
+                reason: "kids_hard_phrases_distinct_threshold_reached",
+                log: "Skip: Kids-Inhalt (KIDS_HARD_PHRASES) – zu viele Treffer (distinct)",
+                details: {
+                  country: countryNorm ?? null,
+                  rejectIfDistinctGte: thresholdKids,
+                  hitsDistinct: kidsRes.hitsDistinct,
+                  hitsTotal: kidsRes.hitsTotal,
+                  matches: kidsRes.matches,
+                },
+              };
+              break;
             }
-          );
+          } else if (filterId === "addictionHard") {
+            const addictionRes = addictionHardPhrasesCheck(
+              doc,
+              phrasesAddiction,
+              thresholdAddiction,
+              { maxSamplesPerField: 3 }
+            );
+            filterResById.addictionHard = addictionRes;
+            passedRulesDynamic.push(
+              `addictionHardRejectIfDistinctGte=${thresholdAddiction} (found=${addictionRes.hitsDistinct})`
+            );
+
+            if (!addictionRes.ok) {
+              job.progress.skippedAddictionHard++;
+              rejectedBy = {
+                id: "addictionHard",
+                reason: "addiction_hard_phrases_distinct_threshold_reached",
+                log: "Skip: Sucht-Inhalt (ADDICTION_HARD_PHRASES) – zu viele Treffer (distinct)",
+                details: {
+                  country: countryNorm ?? null,
+                  rejectIfDistinctGte: thresholdAddiction,
+                  hitsDistinct: addictionRes.hitsDistinct,
+                  hitsTotal: addictionRes.hitsTotal,
+                  matches: addictionRes.matches,
+                },
+              };
+              break;
+            }
+          } else if (filterId === "combatSports") {
+            const combatRes = combatSportsPhrasesCheck(
+              doc,
+              phrasesCombat,
+              thresholdCombat,
+              { maxSamplesPerField: 3 }
+            );
+            filterResById.combatSports = combatRes;
+            passedRulesDynamic.push(
+              `combatSportsRejectIfDistinctGte=${thresholdCombat} (found=${combatRes.hitsDistinct})`
+            );
+
+            if (!combatRes.ok) {
+              job.progress.skippedCombatSports++;
+              rejectedBy = {
+                id: "combatSports",
+                reason: "combat_sports_phrases_distinct_threshold_reached",
+                log: "Skip: Kampfsport-Content (COMBAT_SPORTS_PHRASES)",
+                details: {
+                  country: countryNorm ?? null,
+                  rejectIfDistinctGte: thresholdCombat,
+                  hitsDistinct: combatRes.hitsDistinct,
+                  hitsTotal: combatRes.hitsTotal,
+                  matches: combatRes.matches,
+                },
+              };
+              break;
+            }
+          }
+        }
+
+        if (rejectedBy) {
+          emitLog(jobId, "info", rejectedBy.log, {
+            youtubeId: doc.youtubeId,
+            filterId: rejectedBy.id,
+            ...(rejectedBy.details?.rejectIfDistinctGte !== undefined
+              ? { rejectIfDistinctGte: rejectedBy.details.rejectIfDistinctGte }
+              : {}),
+            ...(rejectedBy.details?.hitsDistinct !== undefined
+              ? { hitsDistinct: rejectedBy.details.hitsDistinct }
+              : {}),
+            ...(rejectedBy.details?.hitsTotal !== undefined
+              ? { hitsTotal: rejectedBy.details.hitsTotal }
+              : {}),
+            matches: Array.isArray(rejectedBy.details?.matches)
+              ? rejectedBy.details.matches.slice(0, 25)
+              : [],
+            country: countryNorm ?? null,
+          });
 
           if (writeDeletedChannels) {
             await recordDeletedChannel({
               jobId,
               doc,
-              reason: "combat_sports_phrases_distinct_threshold_reached",
-              details: {
-                country: countryNorm ?? null,
-                rejectIfDistinctGte: combatDistinctThreshold,
-                hitsDistinct: combatRes.hitsDistinct,
-                hitsTotal: combatRes.hitsTotal,
-                matches: combatRes.matches,
-              },
+              reason: rejectedBy.reason,
+              details: rejectedBy.details,
             });
             job.progress.deletedSaved++;
           }
@@ -1892,9 +1957,7 @@ async function runJobVorgefiltertToCode(jobId) {
                 `nonGermanDistinctPerField<=${maxBadCharsDistinctPerField}`,
                 // ✅ dynamisch: wir loggen den *tatsächlichen* minDistinct für dieses Doc:
                 `deutschWordsDistinctTotal>=${germanRes.minDistinct} (dynamic: ceil(totalWords/${wordsPerRequiredGerman}) clamped ${minGermanWordsBase}..${maxGermanWordsCap})`,
-                `kidsHardRejectIfDistinctGte=${kidsDistinctThreshold} (found=${kidsRes.hitsDistinct})`,
-                `addictionHardRejectIfDistinctGte=${addictionDistinctThreshold} (found=${addictionRes.hitsDistinct})`,
-                `combatSportsRejectIfDistinctGte=${combatDistinctThreshold} (found=${combatRes.hitsDistinct})`,
+                ...passedRulesDynamic,
                 `descriptionChars>=${descRes.minChars} (found=${descRes.length})`,
               ],
 
@@ -1919,38 +1982,76 @@ async function runJobVorgefiltertToCode(jobId) {
                 maxCap: minCalc.cap,
               },
 
-              kidsHardCheck: {
-                rule: {
-                  rejectIfDistinctGte: kidsDistinctThreshold,
-                  passIfDistinctLt: kidsDistinctThreshold,
+              codeFilters: {
+                order: codeFilterOrder,
+                enabled: {
+                  kidsHard: isEnabled("kidsHard"),
+                  addictionHard: isEnabled("addictionHard"),
+                  combatSports: isEnabled("combatSports"),
                 },
-                distinctThreshold: kidsRes.distinctThreshold,
-                hitsDistinct: kidsRes.hitsDistinct,
-                hitsTotal: kidsRes.hitsTotal,
-                matches: kidsRes.matches,
-              },
-              // ✅ NEU (genau wie kidsHardCheck, nur mit addictionRes):
-              addictionHardCheck: {
-                rule: {
-                  rejectIfDistinctGte: addictionDistinctThreshold,
-                  passIfDistinctLt: addictionDistinctThreshold,
+                phrases: {
+                  kidsHard: {
+                    useDefault: options?.kidsHardPhrasesUseDefault !== false,
+                    count: Array.isArray(phrasesKids) ? phrasesKids.length : 0,
+                  },
+                  addictionHard: {
+                    useDefault:
+                      options?.addictionHardPhrasesUseDefault !== false,
+                    count: Array.isArray(phrasesAddiction)
+                      ? phrasesAddiction.length
+                      : 0,
+                  },
+                  combatSports: {
+                    useDefault:
+                      options?.combatSportsPhrasesUseDefault !== false,
+                    count: Array.isArray(phrasesCombat)
+                      ? phrasesCombat.length
+                      : 0,
+                  },
                 },
-                distinctThreshold: addictionRes.distinctThreshold,
-                hitsDistinct: addictionRes.hitsDistinct,
-                hitsTotal: addictionRes.hitsTotal,
-                matches: addictionRes.matches,
               },
-              // ✅ NEU: nur Debug/Protokoll
-              combatSportsCheck: {
-                rule: {
-                  rejectIfDistinctGte: combatDistinctThreshold,
-                  passIfDistinctLt: combatDistinctThreshold,
-                },
-                distinctThreshold: combatRes.distinctThreshold,
-                hitsDistinct: combatRes.hitsDistinct,
-                hitsTotal: combatRes.hitsTotal,
-                matches: combatRes.matches,
-              },
+
+              kidsHardCheck: isEnabled("kidsHard")
+                ? {
+                    rule: {
+                      rejectIfDistinctGte: thresholdKids,
+                      passIfDistinctLt: thresholdKids,
+                    },
+                    distinctThreshold:
+                      filterResById.kidsHard?.distinctThreshold,
+                    hitsDistinct: filterResById.kidsHard?.hitsDistinct,
+                    hitsTotal: filterResById.kidsHard?.hitsTotal,
+                    matches: filterResById.kidsHard?.matches,
+                  }
+                : { disabled: true },
+
+              addictionHardCheck: isEnabled("addictionHard")
+                ? {
+                    rule: {
+                      rejectIfDistinctGte: thresholdAddiction,
+                      passIfDistinctLt: thresholdAddiction,
+                    },
+                    distinctThreshold:
+                      filterResById.addictionHard?.distinctThreshold,
+                    hitsDistinct: filterResById.addictionHard?.hitsDistinct,
+                    hitsTotal: filterResById.addictionHard?.hitsTotal,
+                    matches: filterResById.addictionHard?.matches,
+                  }
+                : { disabled: true },
+
+              combatSportsCheck: isEnabled("combatSports")
+                ? {
+                    rule: {
+                      rejectIfDistinctGte: thresholdCombat,
+                      passIfDistinctLt: thresholdCombat,
+                    },
+                    distinctThreshold:
+                      filterResById.combatSports?.distinctThreshold,
+                    hitsDistinct: filterResById.combatSports?.hitsDistinct,
+                    hitsTotal: filterResById.combatSports?.hitsTotal,
+                    matches: filterResById.combatSports?.matches,
+                  }
+                : { disabled: true },
             },
           };
 
@@ -2262,6 +2363,36 @@ app.get("/api/collections", async (req, res) => {
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Config API: Default Code Filter Phrases (für Adjust UI)
+// ---------------------------------------------------------------------------
+app.get("/api/config/code-filters", (req, res) => {
+  return res.json({
+    ok: true,
+    defaultOrder: DEFAULT_CODE_FILTER_ORDER,
+    filters: {
+      kidsHard: {
+        id: "kidsHard",
+        label: "Kids Hard Phrases",
+        defaultDistinctThreshold: KIDS_HARD_PHRASES_DISTINCT_AMOUNT_NR,
+        phrases: KIDS_HARD_PHRASES,
+      },
+      addictionHard: {
+        id: "addictionHard",
+        label: "Addiction Hard Phrases",
+        defaultDistinctThreshold: ADDICTION_HARD_PHRASES_DISTINCT_AMOUNT_NR,
+        phrases: ADDICTION_HARD_PHRASES,
+      },
+      combatSports: {
+        id: "combatSports",
+        label: "Combat Sports Phrases",
+        defaultDistinctThreshold: COMBAT_SPORTS_PHRASES_DISTINCT_AMOUNT_NR,
+        phrases: COMBAT_SPORTS_PHRASES,
+      },
+    },
+  });
 });
 
 function getCollectionModelByName(name) {

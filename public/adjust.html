@@ -276,68 +276,183 @@
 
           <!--
             =========================================================
-            4) Themen-Checks thresholds (distinct)
+            4) Code Filter (Kids / Sucht / Kampfsport) – Wörter + Reihenfolge
             =========================================================
-            server.js nutzt:
-              kidsHardDistinctThreshold
-              addictionHardDistinctThreshold
-              combatSportsDistinctThreshold
           -->
           <div class="field">
-            <label for="kidsHardDistinctThreshold"
-              >kidsHardDistinctThreshold</label
-            >
-            <div class="inputRow">
-              <input
-                id="kidsHardDistinctThreshold"
-                class="input"
-                type="number"
-                min="0"
-                step="1"
-              />
-              <span class="pillSmall mono">Default: 2</span>
-            </div>
+            <label>Code Filter</label>
             <div class="help">
-              Ab wie vielen <b>distinct</b> Kids-Phrasen wird rausgefiltert.
+              Du kannst hier
+              <b>Wörter/Phrasen bearbeiten</b> und per Drag&Drop die
+              <b>Reihenfolge</b> der Filter festlegen. Leere/disabled Filter
+              werden übersprungen.
             </div>
           </div>
 
-          <div class="field">
-            <label for="addictionHardDistinctThreshold"
-              >addictionHardDistinctThreshold</label
-            >
-            <div class="inputRow">
-              <input
-                id="addictionHardDistinctThreshold"
-                class="input"
-                type="number"
-                min="0"
-                step="1"
-              />
-              <span class="pillSmall mono">Default: 2</span>
+          <ul id="codeFilterOrderList" class="dragList">
+            <li class="dragItem" draggable="true" data-id="kidsHard">
+              <div class="dragLeft">
+                <span class="dragHandle" title="Ziehen zum Sortieren">⋮⋮</span>
+                <span class="dragName">Kids Hard</span>
+              </div>
+              <label class="toggle">
+                <input id="enable_kidsHard" type="checkbox" />
+                aktiv
+              </label>
+            </li>
+            <li class="dragItem" draggable="true" data-id="addictionHard">
+              <div class="dragLeft">
+                <span class="dragHandle" title="Ziehen zum Sortieren">⋮⋮</span>
+                <span class="dragName">Addiction Hard</span>
+              </div>
+              <label class="toggle">
+                <input id="enable_addictionHard" type="checkbox" />
+                aktiv
+              </label>
+            </li>
+            <li class="dragItem" draggable="true" data-id="combatSports">
+              <div class="dragLeft">
+                <span class="dragHandle" title="Ziehen zum Sortieren">⋮⋮</span>
+                <span class="dragName">Combat Sports</span>
+              </div>
+              <label class="toggle">
+                <input id="enable_combatSports" type="checkbox" />
+                aktiv
+              </label>
+            </li>
+          </ul>
+
+          <div class="divider"></div>
+
+          <!-- Editor: Kids -->
+          <div class="card" style="padding: 12px; box-shadow: none; margin: 0">
+            <div class="card__head">
+              <h2>Kids Hard Phrases</h2>
+              <span id="count_kidsHard" class="pillSmall">— Wörter</span>
             </div>
-            <div class="help">
-              Ab wie vielen <b>distinct</b> Sucht-Phrasen wird rausgefiltert.
+            <div class="field">
+              <label for="kidsHardDistinctThreshold">distinctThreshold</label>
+              <div class="inputRow">
+                <input
+                  id="kidsHardDistinctThreshold"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="1"
+                />
+                <span class="pillSmall mono">Default: 2</span>
+              </div>
+              <label style="margin-top: 10px">
+                <input id="kidsHardPhrasesUseDefault" type="checkbox" />
+                Default-Liste verwenden
+              </label>
+              <div class="help">
+                Wenn deaktiviert, wird die unten stehende Liste als Custom-Liste
+                an den Server gesendet.
+              </div>
+              <textarea
+                id="kidsHardPhrasesText"
+                class="input input--textarea mono"
+                rows="10"
+                placeholder="eine Phrase pro Zeile…"
+              ></textarea>
+              <div class="row" style="margin-top: 10px">
+                <button
+                  id="btnResetKidsList"
+                  class="btn btn--ghost"
+                  type="button"
+                >
+                  Default laden
+                </button>
+              </div>
             </div>
           </div>
 
-          <div class="field">
-            <label for="combatSportsDistinctThreshold"
-              >combatSportsDistinctThreshold</label
-            >
-            <div class="inputRow">
-              <input
-                id="combatSportsDistinctThreshold"
-                class="input"
-                type="number"
-                min="0"
-                step="1"
-              />
-              <span class="pillSmall mono">Default: 2</span>
+          <div class="divider"></div>
+
+          <!-- Editor: Addiction -->
+          <div class="card" style="padding: 12px; box-shadow: none; margin: 0">
+            <div class="card__head">
+              <h2>Addiction Hard Phrases</h2>
+              <span id="count_addictionHard" class="pillSmall">— Wörter</span>
             </div>
-            <div class="help">
-              Ab wie vielen <b>distinct</b> Kampfsport-Phrasen wird
-              rausgefiltert.
+            <div class="field">
+              <label for="addictionHardDistinctThreshold"
+                >distinctThreshold</label
+              >
+              <div class="inputRow">
+                <input
+                  id="addictionHardDistinctThreshold"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="1"
+                />
+                <span class="pillSmall mono">Default: 2</span>
+              </div>
+              <label style="margin-top: 10px">
+                <input id="addictionHardPhrasesUseDefault" type="checkbox" />
+                Default-Liste verwenden
+              </label>
+              <textarea
+                id="addictionHardPhrasesText"
+                class="input input--textarea mono"
+                rows="10"
+                placeholder="eine Phrase pro Zeile…"
+              ></textarea>
+              <div class="row" style="margin-top: 10px">
+                <button
+                  id="btnResetAddictionList"
+                  class="btn btn--ghost"
+                  type="button"
+                >
+                  Default laden
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Editor: Combat -->
+          <div class="card" style="padding: 12px; box-shadow: none; margin: 0">
+            <div class="card__head">
+              <h2>Combat Sports Phrases</h2>
+              <span id="count_combatSports" class="pillSmall">— Wörter</span>
+            </div>
+            <div class="field">
+              <label for="combatSportsDistinctThreshold"
+                >distinctThreshold</label
+              >
+              <div class="inputRow">
+                <input
+                  id="combatSportsDistinctThreshold"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="1"
+                />
+                <span class="pillSmall mono">Default: 2</span>
+              </div>
+              <label style="margin-top: 10px">
+                <input id="combatSportsPhrasesUseDefault" type="checkbox" />
+                Default-Liste verwenden
+              </label>
+              <textarea
+                id="combatSportsPhrasesText"
+                class="input input--textarea mono"
+                rows="10"
+                placeholder="eine Phrase pro Zeile…"
+              ></textarea>
+              <div class="row" style="margin-top: 10px">
+                <button
+                  id="btnResetCombatList"
+                  class="btn btn--ghost"
+                  type="button"
+                >
+                  Default laden
+                </button>
+              </div>
             </div>
           </div>
 
@@ -394,8 +509,8 @@
             <label>KI Modelle (Ollama) – 1 bis 3 Modelle</label>
             <div class="help">
               Diese Modelle werden von der Startseite beim Klick auf
-              <span class="mono">Start KI Prüfung</span> mitgesendet.
-              Leere Slots werden übersprungen.
+              <span class="mono">Start KI Prüfung</span> mitgesendet. Leere
+              Slots werden übersprungen.
             </div>
           </div>
 
@@ -535,6 +650,19 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
 
       const OPTIONS_KEY = "ytcheck_options_v1";
       const $ = (id) => document.getElementById(id);
+      const CODE_FILTERS_URL = "/api/config/code-filters";
+
+      // Default Code Filter Config wird vom Server geladen (für Anzeige/Reset)
+      let DEFAULT_CODE_FILTER_ORDER = [
+        "kidsHard",
+        "addictionHard",
+        "combatSports",
+      ];
+      let DEFAULT_PHRASES = {
+        kidsHard: [],
+        addictionHard: [],
+        combatSports: [],
+      };
 
       /**
        * Defaults: Diese Werte werden verwendet, wenn noch nichts gespeichert ist
@@ -561,6 +689,20 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
         model1: "",
         model2: "",
         model3: "",
+
+        // Code Filter (Reihenfolge + Enable + Listen)
+        codeFilterOrder: ["kidsHard", "addictionHard", "combatSports"],
+        codeFilterEnabled: {
+          kidsHard: true,
+          addictionHard: true,
+          combatSports: true,
+        },
+        kidsHardPhrasesUseDefault: true,
+        kidsHardPhrases: [],
+        addictionHardPhrasesUseDefault: true,
+        addictionHardPhrases: [],
+        combatSportsPhrasesUseDefault: true,
+        combatSportsPhrases: [],
       };
 
       function setStatus(text) {
@@ -593,6 +735,145 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
         const n = Number(value);
         if (!Number.isFinite(n)) return fallback;
         return Math.floor(n);
+      }
+
+      function phrasesTextToArray(text) {
+        const raw = String(text || "");
+        const lines = raw
+          .split(/\r?\n/)
+          .map((l) => String(l || "").trim())
+          .filter(Boolean);
+
+        // unique (case-insensitive)
+        const out = [];
+        const seen = new Set();
+        for (const l of lines) {
+          const key = l.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(l);
+        }
+        return out;
+      }
+
+      function phrasesArrayToText(arr) {
+        const a = Array.isArray(arr) ? arr : [];
+        return a
+          .map((x) => String(x || "").trim())
+          .filter(Boolean)
+          .join("\n");
+      }
+
+      function getCodeFilterOrderFromDom() {
+        const list = $("codeFilterOrderList");
+        const items = Array.from(list?.querySelectorAll(".dragItem") || []);
+        const order = items
+          .map((li) => String(li?.dataset?.id || "").trim())
+          .filter(Boolean);
+
+        // ensure all exist in default order
+        const uniq = [];
+        const seen = new Set();
+        for (const x of order) {
+          if (seen.has(x)) continue;
+          seen.add(x);
+          uniq.push(x);
+        }
+        for (const x of DEFAULT_CODE_FILTER_ORDER) {
+          if (!seen.has(x)) uniq.push(x);
+        }
+        return uniq;
+      }
+
+      function updateCodeFilterCounts() {
+        const kidsUseDefault = Boolean($("kidsHardPhrasesUseDefault")?.checked);
+        const addUseDefault = Boolean(
+          $("addictionHardPhrasesUseDefault")?.checked
+        );
+        const combatUseDefault = Boolean(
+          $("combatSportsPhrasesUseDefault")?.checked
+        );
+
+        const kidsArr = kidsUseDefault
+          ? DEFAULT_PHRASES.kidsHard
+          : phrasesTextToArray($("kidsHardPhrasesText")?.value);
+        const addArr = addUseDefault
+          ? DEFAULT_PHRASES.addictionHard
+          : phrasesTextToArray($("addictionHardPhrasesText")?.value);
+        const combatArr = combatUseDefault
+          ? DEFAULT_PHRASES.combatSports
+          : phrasesTextToArray($("combatSportsPhrasesText")?.value);
+
+        $("count_kidsHard").textContent = `${kidsArr.length} Wörter`;
+        $("count_addictionHard").textContent = `${addArr.length} Wörter`;
+        $("count_combatSports").textContent = `${combatArr.length} Wörter`;
+      }
+
+      function applyUseDefaultState() {
+        const kidsUseDefault = Boolean($("kidsHardPhrasesUseDefault")?.checked);
+        const addUseDefault = Boolean(
+          $("addictionHardPhrasesUseDefault")?.checked
+        );
+        const combatUseDefault = Boolean(
+          $("combatSportsPhrasesUseDefault")?.checked
+        );
+
+        const kidsTa = $("kidsHardPhrasesText");
+        const addTa = $("addictionHardPhrasesText");
+        const combatTa = $("combatSportsPhrasesText");
+
+        if (kidsTa) {
+          kidsTa.disabled = kidsUseDefault;
+          if (kidsUseDefault)
+            kidsTa.value = phrasesArrayToText(DEFAULT_PHRASES.kidsHard);
+        }
+        if (addTa) {
+          addTa.disabled = addUseDefault;
+          if (addUseDefault)
+            addTa.value = phrasesArrayToText(DEFAULT_PHRASES.addictionHard);
+        }
+        if (combatTa) {
+          combatTa.disabled = combatUseDefault;
+          if (combatUseDefault)
+            combatTa.value = phrasesArrayToText(DEFAULT_PHRASES.combatSports);
+        }
+
+        updateCodeFilterCounts();
+      }
+
+      function attachDragReorder() {
+        const list = $("codeFilterOrderList");
+        if (!list) return;
+
+        let dragEl = null;
+
+        list.addEventListener("dragstart", (e) => {
+          const li = e.target?.closest?.(".dragItem");
+          if (!li) return;
+          dragEl = li;
+          li.setAttribute("aria-grabbed", "true");
+          e.dataTransfer.effectAllowed = "move";
+        });
+
+        list.addEventListener("dragend", () => {
+          if (dragEl) dragEl.setAttribute("aria-grabbed", "false");
+          dragEl = null;
+          // Live preview update
+          const current = readForm();
+          renderPreview(current);
+          setStatus("Status: nicht gespeichert");
+        });
+
+        list.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          const over = e.target?.closest?.(".dragItem");
+          if (!over || !dragEl || over === dragEl) return;
+
+          const rect = over.getBoundingClientRect();
+          const after = e.clientY > rect.top + rect.height / 2;
+          if (after) over.after(dragEl);
+          else over.before(dragEl);
+        });
       }
 
       function readForm() {
@@ -639,6 +920,32 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
           model1: String($("model1").value || "").trim(),
           model2: String($("model2").value || "").trim(),
           model3: String($("model3").value || "").trim(),
+
+          codeFilterOrder: getCodeFilterOrderFromDom(),
+          codeFilterEnabled: {
+            kidsHard: Boolean($("enable_kidsHard")?.checked),
+            addictionHard: Boolean($("enable_addictionHard")?.checked),
+            combatSports: Boolean($("enable_combatSports")?.checked),
+          },
+
+          kidsHardPhrasesUseDefault: Boolean(
+            $("kidsHardPhrasesUseDefault")?.checked
+          ),
+          kidsHardPhrases: phrasesTextToArray($("kidsHardPhrasesText")?.value),
+
+          addictionHardPhrasesUseDefault: Boolean(
+            $("addictionHardPhrasesUseDefault")?.checked
+          ),
+          addictionHardPhrases: phrasesTextToArray(
+            $("addictionHardPhrasesText")?.value
+          ),
+
+          combatSportsPhrasesUseDefault: Boolean(
+            $("combatSportsPhrasesUseDefault")?.checked
+          ),
+          combatSportsPhrases: phrasesTextToArray(
+            $("combatSportsPhrasesText")?.value
+          ),
         };
       }
 
@@ -664,6 +971,67 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
         $("model1").value = obj.model1 || "";
         $("model2").value = obj.model2 || "";
         $("model3").value = obj.model3 || "";
+
+        // Code Filter Enabled
+        $("enable_kidsHard").checked =
+          obj.codeFilterEnabled?.kidsHard !== false;
+        $("enable_addictionHard").checked =
+          obj.codeFilterEnabled?.addictionHard !== false;
+        $("enable_combatSports").checked =
+          obj.codeFilterEnabled?.combatSports !== false;
+
+        // Code Filter Order (DOM Reihenfolge setzen)
+        const order = Array.isArray(obj.codeFilterOrder)
+          ? obj.codeFilterOrder
+          : DEFAULT_CODE_FILTER_ORDER;
+        const list = $("codeFilterOrderList");
+        if (list) {
+          const map = new Map();
+          for (const li of Array.from(list.querySelectorAll(".dragItem"))) {
+            map.set(li.dataset.id, li);
+          }
+          list.innerHTML = "";
+          for (const id of order) {
+            const el = map.get(id);
+            if (el) list.appendChild(el);
+          }
+          // ensure missing ones
+          for (const id of DEFAULT_CODE_FILTER_ORDER) {
+            if (!order.includes(id)) {
+              const el = map.get(id);
+              if (el) list.appendChild(el);
+            }
+          }
+        }
+
+        // Phrase lists
+        $("kidsHardPhrasesUseDefault").checked =
+          obj.kidsHardPhrasesUseDefault !== false;
+        $("addictionHardPhrasesUseDefault").checked =
+          obj.addictionHardPhrasesUseDefault !== false;
+        $("combatSportsPhrasesUseDefault").checked =
+          obj.combatSportsPhrasesUseDefault !== false;
+
+        // Always show something (defaults if empty)
+        $("kidsHardPhrasesText").value = phrasesArrayToText(
+          Array.isArray(obj.kidsHardPhrases) && obj.kidsHardPhrases.length
+            ? obj.kidsHardPhrases
+            : DEFAULT_PHRASES.kidsHard
+        );
+        $("addictionHardPhrasesText").value = phrasesArrayToText(
+          Array.isArray(obj.addictionHardPhrases) &&
+            obj.addictionHardPhrases.length
+            ? obj.addictionHardPhrases
+            : DEFAULT_PHRASES.addictionHard
+        );
+        $("combatSportsPhrasesText").value = phrasesArrayToText(
+          Array.isArray(obj.combatSportsPhrases) &&
+            obj.combatSportsPhrases.length
+            ? obj.combatSportsPhrases
+            : DEFAULT_PHRASES.combatSports
+        );
+
+        applyUseDefaultState();
       }
 
       function renderPreview(obj) {
@@ -687,6 +1055,15 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
           "model1",
           "model2",
           "model3",
+          "enable_kidsHard",
+          "enable_addictionHard",
+          "enable_combatSports",
+          "kidsHardPhrasesUseDefault",
+          "kidsHardPhrasesText",
+          "addictionHardPhrasesUseDefault",
+          "addictionHardPhrasesText",
+          "combatSportsPhrasesUseDefault",
+          "combatSportsPhrasesText",
         ];
 
         for (const id of ids) {
@@ -728,13 +1105,96 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
         setStatus("Status: geladen ✅");
       });
 
+      // Default Buttons
+      $("btnResetKidsList").addEventListener("click", () => {
+        $("kidsHardPhrasesUseDefault").checked = true;
+        $("kidsHardPhrasesText").value = phrasesArrayToText(
+          DEFAULT_PHRASES.kidsHard
+        );
+        applyUseDefaultState();
+        const current = readForm();
+        renderPreview(current);
+        setStatus("Status: nicht gespeichert");
+      });
+      $("btnResetAddictionList").addEventListener("click", () => {
+        $("addictionHardPhrasesUseDefault").checked = true;
+        $("addictionHardPhrasesText").value = phrasesArrayToText(
+          DEFAULT_PHRASES.addictionHard
+        );
+        applyUseDefaultState();
+        const current = readForm();
+        renderPreview(current);
+        setStatus("Status: nicht gespeichert");
+      });
+      $("btnResetCombatList").addEventListener("click", () => {
+        $("combatSportsPhrasesUseDefault").checked = true;
+        $("combatSportsPhrasesText").value = phrasesArrayToText(
+          DEFAULT_PHRASES.combatSports
+        );
+        applyUseDefaultState();
+        const current = readForm();
+        renderPreview(current);
+        setStatus("Status: nicht gespeichert");
+      });
+
+      // Use-default toggles
+      $("kidsHardPhrasesUseDefault").addEventListener("change", () => {
+        applyUseDefaultState();
+      });
+      $("addictionHardPhrasesUseDefault").addEventListener("change", () => {
+        applyUseDefaultState();
+      });
+      $("combatSportsPhrasesUseDefault").addEventListener("change", () => {
+        applyUseDefaultState();
+      });
+
       // INIT
-      (function init() {
+      (async function init() {
+        // 1) Defaults vom Server holen (damit UI die echten Arrays anzeigt)
+        try {
+          const r = await fetch(CODE_FILTERS_URL, { cache: "no-store" });
+          const j = await r.json().catch(() => null);
+          if (r.ok && j?.ok && j?.filters) {
+            DEFAULT_CODE_FILTER_ORDER = Array.isArray(j.defaultOrder)
+              ? j.defaultOrder
+              : DEFAULT_CODE_FILTER_ORDER;
+            DEFAULT_PHRASES = {
+              kidsHard: Array.isArray(j.filters?.kidsHard?.phrases)
+                ? j.filters.kidsHard.phrases
+                : DEFAULT_PHRASES.kidsHard,
+              addictionHard: Array.isArray(j.filters?.addictionHard?.phrases)
+                ? j.filters.addictionHard.phrases
+                : DEFAULT_PHRASES.addictionHard,
+              combatSports: Array.isArray(j.filters?.combatSports?.phrases)
+                ? j.filters.combatSports.phrases
+                : DEFAULT_PHRASES.combatSports,
+            };
+            // update DEFAULTS order too (für neue Browser ohne localStorage)
+            DEFAULTS.codeFilterOrder = DEFAULT_CODE_FILTER_ORDER.slice();
+          }
+        } catch {
+          // ignore -> UI kann trotzdem arbeiten (ohne Defaults)
+        }
+
         const loaded = loadOptions();
+        // Backwards compatible defaults
+        if (!loaded.codeFilterOrder)
+          loaded.codeFilterOrder = DEFAULTS.codeFilterOrder;
+        if (!loaded.codeFilterEnabled)
+          loaded.codeFilterEnabled = DEFAULTS.codeFilterEnabled;
+        if (loaded.kidsHardPhrasesUseDefault === undefined)
+          loaded.kidsHardPhrasesUseDefault = true;
+        if (loaded.addictionHardPhrasesUseDefault === undefined)
+          loaded.addictionHardPhrasesUseDefault = true;
+        if (loaded.combatSportsPhrasesUseDefault === undefined)
+          loaded.combatSportsPhrasesUseDefault = true;
+
         fillForm(loaded);
         renderPreview(loaded);
         setStatus("Status: geladen ✅");
         attachLivePreview();
+        attachDragReorder();
+        updateCodeFilterCounts();
       })();
     </script>
   </body>

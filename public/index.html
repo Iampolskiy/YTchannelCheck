@@ -186,6 +186,20 @@
         model1: "",
         model2: "",
         model3: "",
+
+        // Code Filter (Adjust UI)
+        codeFilterOrder: ["kidsHard", "addictionHard", "combatSports"],
+        codeFilterEnabled: {
+          kidsHard: true,
+          addictionHard: true,
+          combatSports: true,
+        },
+        kidsHardPhrasesUseDefault: true,
+        kidsHardPhrases: [],
+        addictionHardPhrasesUseDefault: true,
+        addictionHardPhrases: [],
+        combatSportsPhrasesUseDefault: true,
+        combatSportsPhrases: [],
       };
 
       function safeParseJson(raw) {
@@ -326,6 +340,9 @@
         }
 
         let es = null;
+        let currentJobId = null;
+        let lastSseErrorLogAt = 0;
+        let sseErrorCheckTimer = null;
 
         try {
           // ✅ Für Debug super hilfreich: was senden wir wirklich?
@@ -344,6 +361,7 @@
             throw new Error(startData.error || "Job-Start fehlgeschlagen");
 
           const jobId = startData.jobId;
+          currentJobId = jobId;
           jobMetaEl.textContent = `Job: ${jobId}`;
           appendLog(`[client] Job gestartet: ${jobId}`);
 
@@ -395,8 +413,45 @@
           });
 
           es.addEventListener("ping", () => {});
-          es.onerror = () =>
-            appendLog("[client] SSE Verbindung unterbrochen (onerror).");
+          es.onerror = async () => {
+            // EventSource reconnectet automatisch und feuert sonst ständig onerror.
+            // Wir loggen gedrosselt und prüfen einmal den Job-Status:
+            const now = Date.now();
+            if (now - lastSseErrorLogAt > 2500) {
+              appendLog("[client] SSE Verbindung unterbrochen (onerror).");
+              lastSseErrorLogAt = now;
+            }
+
+            if (!currentJobId) return;
+            if (sseErrorCheckTimer) return; // nur 1x parallel prüfen
+
+            sseErrorCheckTimer = setTimeout(async () => {
+              try {
+                const r = await fetch(
+                  `/api/jobs/${encodeURIComponent(currentJobId)}`,
+                  { cache: "no-store" }
+                );
+                const j = await r.json().catch(() => null);
+
+                // Typischer Fall: Server neu gestartet -> Jobs (RAM) weg -> 404
+                if (!r.ok && j?.error === "Job nicht gefunden") {
+                  setStatus(
+                    "err",
+                    "Live-Stream verloren ❌",
+                    "Server wurde neu gestartet oder Job-Cache ist weg. Bitte Job neu starten."
+                  );
+                  appendLog(
+                    "[client] Job nicht gefunden (Server neu gestartet?). Stoppe SSE-Reconnect."
+                  );
+                  try {
+                    es?.close();
+                  } catch {}
+                }
+              } finally {
+                sseErrorCheckTimer = null;
+              }
+            }, 400);
+          };
         } catch (e) {
           setStatus("err", "Prozess Fehler ❌", e.message);
           if (jobLogsEl)
