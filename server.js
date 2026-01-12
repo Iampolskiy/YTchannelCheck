@@ -68,6 +68,8 @@
  * - Lange Kanäle brauchen mehr, aber mit Cap, damit es nicht "unmöglich" wird.
  */
 
+import "dotenv/config";
+
 import express from "express";
 import fs from "fs/promises";
 import path from "path";
@@ -86,6 +88,8 @@ import { connectDb, mongoose } from "./lib/db.js";
 import { Ungefiltert } from "./lib/models/Ungefiltert.js";
 import { VorgefiltertCode } from "./lib/models/VorgefiltertCode.js";
 import { DeletedChannel } from "./lib/models/DeletedChannel.js";
+import { Positiv } from "./lib/models/Positiv.js";
+import { Negativ } from "./lib/models/Negativ.js";
 import { buildChannelContentText } from "./lib/utils/channelText.js";
 import { germanWordsDistinctTotalCheck } from "./lib/codeChecks/germanWordsDistinctTotalCheck.js";
 import { DEUTSCH_WORDS_ARRAY } from "./lib/config/deutschArray.js";
@@ -104,6 +108,8 @@ import { combatSportsPhrasesCheck } from "./lib/codeChecks/combatSportsPhrasesCh
 
 import { descriptionNotEmptyCheck } from "./lib/codeChecks/descriptionNotEmptyCheck.js";
 import { loadChannelsFromSbLinkFolder } from "./lib/sbSpecialInput.js";
+
+import { runJobAiDecision as runJobAiDecisionOllama } from "./lib/aiDecision/runJobAiDecision.js";
 
 // ---------------------------------------------------------------------------
 // __dirname Ersatz (weil ESM)
@@ -448,6 +454,16 @@ function createJob({ options }) {
       skippedEmptyDescription: 0,
       // ✅ wie viele wurden in deletedChannels geschrieben
       deletedSaved: 0,
+
+      // ---------------------------------------------------------
+      // KI Decision Job (vorgefiltertCode → positiv/negativ)
+      // ---------------------------------------------------------
+      aiDecisionTotal: 0,
+      aiDecisionDone: 0,
+      aiDecisionSkippedAlreadyClassified: 0,
+      aiDecisionPositivSaved: 0,
+      aiDecisionNegativSaved: 0,
+      aiDecisionErrors: 0,
 
       errors: 0,
     },
@@ -2060,6 +2076,36 @@ app.post("/process/vorgefiltert-to-vorgefiltertCode", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Start Job: KI Decision (vorgefiltertCode → positiv/negativ)
+// ---------------------------------------------------------------------------
+app.post("/process/ai-check-vorgefiltertCode", async (req, res) => {
+  const options = req.body || {};
+  const job = createJob({ options });
+
+  res.json({
+    ok: true,
+    jobId: job.jobId,
+    statusUrl: `/api/jobs/${job.jobId}`,
+    eventsUrl: `/api/jobs/${job.jobId}/stream`,
+  });
+
+  // KI-Prüfung ist ausgelagert (Ollama remote/local)
+  runJobAiDecisionOllama({
+    jobId: job.jobId,
+    job,
+    emitLog,
+    emitSnapshot,
+  }).catch((e) => {
+    // Sollte selten passieren, aber wir wollen den Job nicht "hängen" lassen
+    job.status = "failed";
+    job.finishedAt = nowIso();
+    job.error = String(e?.message || e);
+    emitLog(job.jobId, "err", "KI Job Crash", { error: job.error });
+    emitSnapshot(job.jobId, { step: "Job Fehler", stats: { ...job.progress } });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Job Status abfragen
 // ---------------------------------------------------------------------------
 app.get("/api/jobs/:jobId", (req, res) => {
@@ -2200,6 +2246,8 @@ app.get("/api/collections", async (req, res) => {
     const countUngefiltert = await Ungefiltert.countDocuments();
     const countVorgefiltertCode = await VorgefiltertCode.countDocuments();
     const countDeleted = await DeletedChannel.countDocuments();
+    const countPositiv = await Positiv.countDocuments();
+    const countNegativ = await Negativ.countDocuments();
 
     return res.json({
       ok: true,
@@ -2207,6 +2255,8 @@ app.get("/api/collections", async (req, res) => {
         ungefiltert: countUngefiltert,
         vorgefiltertCode: countVorgefiltertCode,
         deletedChannels: countDeleted,
+        positiv: countPositiv,
+        negativ: countNegativ,
       },
     });
   } catch (e) {
@@ -2218,6 +2268,8 @@ function getCollectionModelByName(name) {
   if (name === "ungefiltert") return Ungefiltert;
   if (name === "vorgefiltertCode") return VorgefiltertCode;
   if (name === "deletedChannels") return DeletedChannel;
+  if (name === "positiv") return Positiv;
+  if (name === "negativ") return Negativ;
   return null;
 }
 
@@ -2258,7 +2310,14 @@ app.get("/api/collection/:name", async (req, res) => {
         { youtubeUrl: { $regex: queryStr, $options: "i" } },
         { "channelInfo.title": { $regex: queryStr, $options: "i" } },
         { "channelInfo.handle": { $regex: queryStr, $options: "i" } },
+        { "channelDoc.channelInfo.title": { $regex: queryStr, $options: "i" } },
+        {
+          "channelDoc.channelInfo.handle": { $regex: queryStr, $options: "i" },
+        },
         { lastReason: { $regex: queryStr, $options: "i" } },
+        { "aiCheck.finalDecision": { $regex: queryStr, $options: "i" } },
+        { "aiCheck.reasonsSummary": { $regex: queryStr, $options: "i" } },
+        { "aiCheck.votes.model": { $regex: queryStr, $options: "i" } },
       ];
     }
 
@@ -2274,12 +2333,26 @@ app.get("/api/collection/:name", async (req, res) => {
         youtubeUrl: 1,
         sourceFile: 1,
 
+        aiFinalDecision: 1,
+        aiFinalReason: 1,
+        channelTitle: 1,
+
         "channelInfo.id": 1,
         "channelInfo.title": 1,
         "channelInfo.handle": 1,
         "channelInfo.url": 1,
         "channelInfo.country": 1,
         "channelInfo.subscriberCountText": 1,
+
+        // Fallback: falls channelInfo nur im Snapshot steckt (ältere positiv/negativ docs)
+        "channelDoc.channelInfo.title": 1,
+        "channelDoc.channelInfo.handle": 1,
+        "channelDoc.channelInfo.country": 1,
+        "channelDoc.channelInfo.subscriberCountText": 1,
+        "channelDoc.ytAboutOk": 1,
+        "channelDoc.ytVideosOk": 1,
+        "channelDoc.status": 1,
+        "channelDoc.extractedAt": 1,
 
         ytAboutOk: 1,
         ytVideosOk: 1,
@@ -2288,6 +2361,7 @@ app.get("/api/collection/:name", async (req, res) => {
         createdAt: 1,
 
         codeCheck: 1,
+        aiCheck: 1,
 
         lastReason: 1,
         timesSkipped: 1,

@@ -66,7 +66,8 @@
           <div class="brand__text">
             <div class="brand__title">Collections</div>
             <div class="brand__subtitle">
-              ungefiltert / vorgefiltertCode / deletedChannels
+              ungefiltert / vorgefiltertCode / deletedChannels / positiv /
+              negativ
             </div>
           </div>
         </div>
@@ -178,6 +179,8 @@
                 <th>sourceFile</th>
                 <th>lastReason</th>
                 <th>timesSkipped</th>
+                <th>AI</th>
+                <th>AI Gründe</th>
                 <th>extractedAt</th>
                 <th>createdAt</th>
                 <th>Details</th>
@@ -345,22 +348,48 @@
         const tbody = $("tbody");
 
         if (rows.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="12" class="muted">Keine Ergebnisse.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="17" class="muted">Keine Ergebnisse.</td></tr>`;
         } else {
           tbody.innerHTML = rows
             .map((r) => {
               // channelInfo kommt aus Mongo und ist ein Objekt:
               // r.channelInfo.title, r.channelInfo.handle, ...
-              const title = r.channelInfo?.title ?? "";
-              const handle = r.channelInfo?.handle ?? "";
-              const country = r.channelInfo?.country ?? "";
-              const subsText = r.channelInfo?.subscriberCountText ?? "";
+              const ci = r.channelInfo ?? r.channelDoc?.channelInfo ?? {};
+              const title = r.channelTitle ?? ci?.title ?? "";
+              const handle = ci?.handle ?? "";
+              const country = ci?.country ?? "";
+              const subsText = ci?.subscriberCountText ?? "";
+
+              const aiFinal =
+                r.aiFinalDecision ??
+                r.aiCheck?.finalDecision ??
+                r.aiCheck?.decision ??
+                "";
+
+              const aiReasons =
+                r.aiFinalReason ||
+                r.aiCheck?.reasonsSummary ||
+                (Array.isArray(r.aiCheck?.votes)
+                  ? r.aiCheck.votes
+                      .map(
+                        (v) =>
+                          `${v?.model || "model"}:${v?.decision || "?"} ${
+                            v?.reason || ""
+                          }`
+                      )
+                      .join(" | ")
+                  : "");
               const sourceFile = r.sourceFile ?? "";
               const lastReason = r.lastReason ?? "";
               const timesSkipped =
                 typeof r.timesSkipped === "number"
                   ? String(r.timesSkipped)
                   : "";
+
+              const ytAboutOk = r.ytAboutOk ?? r.channelDoc?.ytAboutOk;
+              const ytVideosOk = r.ytVideosOk ?? r.channelDoc?.ytVideosOk;
+              const status = r.status ?? r.channelDoc?.status ?? "";
+              const extractedAt = r.extractedAt ?? r.channelDoc?.extractedAt;
 
               return `
                 <tr>
@@ -379,14 +408,20 @@
                   <td>${escapeHtml(country)}</td>
                   <td>${escapeHtml(subsText)}</td>
 
-                  <td>${renderBoolChip(r.ytAboutOk)}</td>
-                  <td>${renderBoolChip(r.ytVideosOk)}</td>
-                  <td>${escapeHtml(r.status ?? "")}</td>
+                  <td>${renderBoolChip(ytAboutOk)}</td>
+                  <td>${renderBoolChip(ytVideosOk)}</td>
+                  <td>${escapeHtml(status)}</td>
                   <td>${escapeHtml(sourceFile)}</td>
                   <td class="mono">${escapeHtml(lastReason)}</td>
                   <td class="mono">${escapeHtml(timesSkipped)}</td>
+                  <td class="mono">${escapeHtml(aiFinal)}</td>
+                  <td class="mono"
+                      style="max-width:900px; white-space: pre-wrap; word-break: break-word;"
+                      title="${escapeHtml(aiReasons)}">${escapeHtml(
+                aiReasons
+              )}</td>
 
-                  <td>${escapeHtml(fmtDate(r.extractedAt))}</td>
+                  <td>${escapeHtml(fmtDate(extractedAt))}</td>
                   <td>${escapeHtml(fmtDate(r.createdAt))}</td>
 
                   <!-- Details Button: lädt Videos + Description nach -->
@@ -464,8 +499,12 @@
         }
 
         const item = data.item || {};
-        const ci = item.channelInfo || {};
-        const videos = Array.isArray(item.videos) ? item.videos : [];
+        const ci = item.channelInfo ?? item.channelDoc?.channelInfo ?? {};
+        const videos = Array.isArray(item.videos)
+          ? item.videos
+          : Array.isArray(item.channelDoc?.videos)
+          ? item.channelDoc.videos
+          : [];
 
         // Description soll in Details -> genau hier
         const description = String(ci.description ?? "").trim();
@@ -504,8 +543,37 @@
         // colspan muss genau zur Spaltenzahl passen
         const detailsTr = document.createElement("tr");
         detailsTr.className = "detailsRow";
+
+        // ✅ Kompakt-JSON: wichtigste Felder "oben" (nicht verschachtelt)
+        const finalEvidence =
+          item.aiFinalEvidence ?? item.aiCheck?.finalEvidence ?? [];
+        const compact = {
+          youtubeId: item.youtubeId ?? null,
+          youtubeUrl: item.youtubeUrl ?? null,
+          title: ci.title ?? null,
+          handle: ci.handle ?? null,
+          country: ci.country ?? null,
+          subscriberCountText: ci.subscriberCountText ?? null,
+          aiFinalDecision:
+            item.aiFinalDecision ?? item.aiCheck?.finalDecision ?? null,
+          aiFinalReason:
+            item.aiFinalReason ??
+            item.aiCheck?.reasonsSummary ??
+            item.aiCheck?.reason ??
+            null,
+          aiFinalEvidence:
+            Array.isArray(finalEvidence) && finalEvidence.length
+              ? finalEvidence
+              : [],
+          models: Array.isArray(item.aiCheck?.votes)
+            ? item.aiCheck.votes.map((v) => v?.model).filter(Boolean)
+            : [],
+          sourceFile: item.sourceFile ?? null,
+          extractedAt: item.extractedAt ?? null,
+          createdAt: item.createdAt ?? null,
+        };
         detailsTr.innerHTML = `
-          <td colspan="15">
+          <td colspan="17">
             <div class="detailsBox">
               <div class="detailsGrid">
                 <div><strong>Title:</strong> ${escapeHtml(ci.title ?? "")}</div>
@@ -563,6 +631,32 @@
                     description
                       ? `<div style="white-space: pre-wrap; margin-top: 6px;">${escapeHtml(
                           description
+                        )}</div>`
+                      : `<span class="muted">—</span>`
+                  }
+                </div>
+
+                <div class="full"><strong>Kompakt (wichtigste Daten zuerst):</strong><br />
+                  <pre class="jsonBox" style="margin-top: 6px;">${escapeHtml(
+                    safeJson(compact)
+                  )}</pre>
+                </div>
+
+                <div class="full"><strong>Evidence (Belegstellen):</strong><br />
+                  ${
+                    Array.isArray(finalEvidence) && finalEvidence.length
+                      ? `<pre class="jsonBox" style="margin-top: 6px;">${escapeHtml(
+                          safeJson(finalEvidence)
+                        )}</pre>`
+                      : `<span class="muted">—</span>`
+                  }
+                </div>
+
+                <div class="full"><strong>KI Entscheidung (aiCheck):</strong><br />
+                  ${
+                    item.aiCheck
+                      ? `<div style="white-space: pre-wrap; margin-top: 6px;" class="mono">${escapeHtml(
+                          safeJson(item.aiCheck)
                         )}</div>`
                       : `<span class="muted">—</span>`
                   }
@@ -722,6 +816,13 @@
 
           // ✅ NEU: dein Description-Check Counter (wenn du ihn im Server setzt)
           renderStat("skippedEmptyDescription", p.skippedEmptyDescription ?? 0),
+
+          // ✅ KI Decision Job Counters (vorgefiltertCode → positiv/negativ)
+          renderStat("aiDecisionTotal", p.aiDecisionTotal ?? 0),
+          renderStat("aiDecisionDone", p.aiDecisionDone ?? 0),
+          renderStat("aiDecisionPositivSaved", p.aiDecisionPositivSaved ?? 0),
+          renderStat("aiDecisionNegativSaved", p.aiDecisionNegativSaved ?? 0),
+          renderStat("aiDecisionErrors", p.aiDecisionErrors ?? 0),
 
           renderStat("errors", p.errors ?? 0),
         ].join("");

@@ -241,6 +241,22 @@ code {
   flex-wrap: wrap;
 }
 
+/* Input (für Index / Collections / etc.) */
+.input {
+  min-width: 260px;
+  padding: 10px 12px;
+  border-radius: 12px;
+
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e9eefc;
+  outline: none;
+}
+
+.input:focus {
+  border-color: rgba(79, 124, 255, 0.55);
+}
+
 /* Toggle (Checkbox + Label) */
 .toggle {
   display: inline-flex;
