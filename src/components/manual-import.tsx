@@ -92,7 +92,8 @@ export function ManualImport() {
           (errorCount > 0 ? `, Errors: ${errorCount}` : '');
         
         if (errorCount > 0 && data.results.imported === 0 && data.results.skipped === 0) {
-           toast.error(`Import failed: ${errorCount} errors (check format)`, { id: toastId });
+           const firstMsg = data.results.errors[0]?.error || 'Unknown error';
+           toast.error(`Import failed (${errorCount} errors). First: ${firstMsg}`, { id: toastId });
         } else {
            toast.success(msg, { id: toastId });
         }
@@ -296,7 +297,13 @@ export function ManualImport() {
                   {isCsvUploading ? 'Uploading...' : 'Upload CSV'}
                 </Button>
                 <p className="text-xs text-center text-muted-foreground">
-                  The CSV should contain YouTube URLs in the first column or any recognizable column.
+                  Supported formats:
+                  <br />
+                  • Simple: <code className="text-xs">https://youtube.com/@channel</code>
+                  <br />
+                  • SocialBlade: <code className="text-xs">&quot;https://socialblade.com/youtube/handle/channel&quot;, &quot;channel&quot;, &quot;+&quot;</code>
+                  <br />
+                  • Any CSV with YouTube URLs in any column
                 </p>
               </div>
             </TabsContent>

@@ -56,6 +56,10 @@ const upload = multer({
 
 /**
  * Parse CSV content and extract URLs from first column
+ * Supports multiple formats:
+ * - Simple: "https://youtube.com/@channel"
+ * - SocialBlade format: "https://socialblade.com/youtube/handle/wirsegeln", "wirsegeln", "+"
+ * - Quoted CSV: "URL", "handle", "marker"
  */
 function parseCsvUrls(content: string): string[] {
   const lines = content.split(/\r?\n/);
@@ -64,7 +68,7 @@ function parseCsvUrls(content: string): string[] {
   const urlRegex = /(https?:\/\/(?:www\.)?(?:youtube\.com\/(?:channel\/|c\/|@|user\/|watch\?v=)|youtu\.be\/|socialblade\.com\/youtube\/[\w/-]+)[\w.-]+)/i;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    let line = lines[i].trim();
     if (!line) continue;
 
     // Skip header row if it looks like a header (and doesn't look like a URL)
@@ -72,7 +76,48 @@ function parseCsvUrls(content: string): string[] {
       continue;
     }
 
-    // 1. Try regex match first
+    // Special handling for quoted CSV format: "URL", "handle", "+/-"
+    // Pattern: "https://socialblade.com/youtube/handle/xxx", "xxx", "+" or "-"
+    // Also handles: "URL", "handle" (without marker) or just "URL"
+    // Allow leading whitespace
+    const quotedCsvMatch = line.match(/^\s*"([^"]+)"/);
+    if (quotedCsvMatch && quotedCsvMatch[1].includes('socialblade.com')) {
+      const urlPart = quotedCsvMatch[1].trim();
+      let foundUrl = urlPart;
+      
+      // Convert SocialBlade URL to YouTube URL
+      if (foundUrl.includes('socialblade.com')) {
+        if (foundUrl.includes('/handle/')) {
+          const handleMatch = foundUrl.match(/\/handle\/([^\/\s"]+)/);
+          if (handleMatch) {
+            const handle = handleMatch[1];
+            foundUrl = `https://www.youtube.com/@${handle}`;
+          }
+        } else if (foundUrl.includes('/channel/')) {
+          const idMatch = foundUrl.match(/\/channel\/(UC[\w-]+)/);
+          if (idMatch) {
+            foundUrl = `https://www.youtube.com/channel/${idMatch[1]}`;
+          }
+        } else if (foundUrl.includes('/user/')) {
+          const userMatch = foundUrl.match(/\/user\/([^\/\s"]+)/);
+          if (userMatch) {
+            foundUrl = `https://www.youtube.com/user/${userMatch[1]}`;
+          }
+        } else if (foundUrl.includes('/c/')) {
+          const cMatch = foundUrl.match(/\/c\/([^\/\s"]+)/);
+          if (cMatch) {
+            foundUrl = `https://www.youtube.com/c/${cMatch[1]}`;
+          }
+        }
+      }
+      
+      if (foundUrl && (foundUrl.includes('youtube.com') || foundUrl.includes('youtu.be'))) {
+        urls.push(foundUrl);
+        continue;
+      }
+    }
+
+    // 1. Try regex match first (handles URLs without quotes)
     const match = line.match(urlRegex);
     if (match) {
       let foundUrl = match[0];
@@ -80,17 +125,25 @@ function parseCsvUrls(content: string): string[] {
       // Convert SocialBlade URL to YouTube URL
       if (foundUrl.includes('socialblade.com')) {
         if (foundUrl.includes('/handle/')) {
-           const handle = foundUrl.split('/handle/')[1];
-           if (handle) foundUrl = `https://www.youtube.com/@${handle}`;
+          const handleMatch = foundUrl.match(/\/handle\/([^\/\s"]+)/);
+          if (handleMatch) {
+            foundUrl = `https://www.youtube.com/@${handleMatch[1]}`;
+          }
         } else if (foundUrl.includes('/channel/')) {
-           const id = foundUrl.split('/channel/')[1];
-           if (id) foundUrl = `https://www.youtube.com/channel/${id}`;
+          const idMatch = foundUrl.match(/\/channel\/(UC[\w-]+)/);
+          if (idMatch) {
+            foundUrl = `https://www.youtube.com/channel/${idMatch[1]}`;
+          }
         } else if (foundUrl.includes('/user/')) {
-           const user = foundUrl.split('/user/')[1];
-           if (user) foundUrl = `https://www.youtube.com/user/${user}`;
+          const userMatch = foundUrl.match(/\/user\/([^\/\s"]+)/);
+          if (userMatch) {
+            foundUrl = `https://www.youtube.com/user/${userMatch[1]}`;
+          }
         } else if (foundUrl.includes('/c/')) {
-            const c = foundUrl.split('/c/')[1];
-            if (c) foundUrl = `https://www.youtube.com/c/${c}`;
+          const cMatch = foundUrl.match(/\/c\/([^\/\s"]+)/);
+          if (cMatch) {
+            foundUrl = `https://www.youtube.com/c/${cMatch[1]}`;
+          }
         }
       }
 
@@ -111,19 +164,27 @@ function parseCsvUrls(content: string): string[] {
 
         // Convert SocialBlade URL to YouTube URL (same logic)
         if (clean.includes('socialblade.com')) {
-            if (clean.includes('/handle/')) {
-               const handle = clean.split('/handle/')[1];
-               if (handle) clean = `https://www.youtube.com/@${handle}`;
-            } else if (clean.includes('/channel/')) {
-               const id = clean.split('/channel/')[1];
-               if (id) clean = `https://www.youtube.com/channel/${id}`;
-            } else if (clean.includes('/user/')) {
-               const user = clean.split('/user/')[1];
-               if (user) clean = `https://www.youtube.com/user/${user}`;
-            } else if (clean.includes('/c/')) {
-                const c = clean.split('/c/')[1];
-                if (c) clean = `https://www.youtube.com/c/${c}`;
+          if (clean.includes('/handle/')) {
+            const handleMatch = clean.match(/\/handle\/([^\/\s"]+)/);
+            if (handleMatch) {
+              clean = `https://www.youtube.com/@${handleMatch[1]}`;
             }
+          } else if (clean.includes('/channel/')) {
+            const idMatch = clean.match(/\/channel\/(UC[\w-]+)/);
+            if (idMatch) {
+              clean = `https://www.youtube.com/channel/${idMatch[1]}`;
+            }
+          } else if (clean.includes('/user/')) {
+            const userMatch = clean.match(/\/user\/([^\/\s"]+)/);
+            if (userMatch) {
+              clean = `https://www.youtube.com/user/${userMatch[1]}`;
+            }
+          } else if (clean.includes('/c/')) {
+            const cMatch = clean.match(/\/c\/([^\/\s"]+)/);
+            if (cMatch) {
+              clean = `https://www.youtube.com/c/${cMatch[1]}`;
+            }
+          }
         }
 
         urls.push(clean);
@@ -133,6 +194,38 @@ function parseCsvUrls(content: string): string[] {
   }
 
   return urls;
+}
+
+/**
+ * Fast: Resolve handle URL to channel ID only (no videos)
+ * Used for CSV imports to speed up bulk imports
+ */
+async function resolveHandleToChannelId(channelUrl: string): Promise<{
+  youtubeId: string;
+  youtubeUrl: string;
+  channelInfo: ReturnType<typeof extractChannelInfo>;
+}> {
+  const normalizedUrl = normalizeYoutubeUrl(channelUrl);
+
+  // Only fetch about page (fast, no videos)
+  const aboutHtml = await fetchChannelAbout(normalizedUrl);
+  const aboutData = extractYtInitialData(aboutHtml);
+  
+  if (!aboutData) {
+    throw new Error('Failed to extract YouTube data from about page');
+  }
+
+  const channelInfo = extractChannelInfo(aboutData);
+  
+  if (!channelInfo.id) {
+    throw new Error('Failed to extract channel ID');
+  }
+
+  return {
+    youtubeId: channelInfo.id,
+    youtubeUrl: channelInfo.url || normalizedUrl,
+    channelInfo,
+  };
 }
 
 /**
@@ -400,8 +493,12 @@ router.post(
       }
 
       // Parse CSV
-      const content = req.file.buffer.toString('utf-8');
+      let content = req.file.buffer.toString('utf-8');
+      // Remove BOM (Byte Order Mark) which is common in Windows CSV files
+      content = content.replace(/^\uFEFF/, '');
+      
       const urls = parseCsvUrls(content);
+      console.log(`[Import] CSV Parsed: Found ${urls.length} URLs from ${content.split(/\r?\n/).length} lines`);
 
       // Use same logic as textarea import
       req.body = { text: urls, campaignId };
@@ -474,7 +571,12 @@ router.post(
              continue;
           }
 
-          const scraped = await scrapeChannel(url);
+          // For Handle URLs (@channel): Use fast resolution (only ID, no videos)
+          // This is 2x faster than full scrapeChannel() because we skip /videos page
+          const resolved = await resolveHandleToChannelId(url);
+          
+          // Check if channel exists by ID
+          const existingById = await Channel.findOne({ youtubeId: resolved.youtubeId });
           if (existingById) {
             if (!existingById.sources.campaignIds.includes(campaignId)) {
               await Channel.updateOne(
@@ -486,21 +588,23 @@ router.post(
             continue;
           }
 
+          // Create channel with minimal data (videos will be fetched later by extraction pipeline)
           await Channel.create({
-            youtubeId: scraped.youtubeId,
-            youtubeUrl: scraped.youtubeUrl,
+            youtubeId: resolved.youtubeId,
+            youtubeUrl: resolved.youtubeUrl,
             sources: { socialBlade: false, campaignIds: [campaignId] },
             status: 'unchecked',
             decisionLevel: null,
-            channelInfo: scraped.channelInfo,
-            videos: scraped.videos,
-            ytAboutOk: scraped.ytAboutOk,
-            ytVideosOk: scraped.ytVideosOk,
-            extractedAt: new Date(),
+            channelInfo: resolved.channelInfo,
+            videos: [], // Videos will be fetched by extraction pipeline later
+            ytAboutOk: true,
+            ytVideosOk: false, // Not fetched yet
+            extractedAt: new Date(0), // Mark as needing full extraction
           });
 
           results.imported++;
         } catch (error) {
+          console.error(`[Import] Error processing URL ${url}:`, error);
           if (error instanceof CaptchaError) {
             results.errors.push({ url, error: 'Captcha detected - stopping import' });
             break;
@@ -607,6 +711,7 @@ router.post(
 
           results.imported++;
         } catch (error) {
+          console.error(`[Import] Error processing URL ${url}:`, error);
           if (error instanceof CaptchaError) {
             results.errors.push({ url, error: 'Captcha detected - stopping import' });
             break;
@@ -712,6 +817,7 @@ router.post(
 
           results.imported++;
         } catch (error) {
+          console.error(`[Import] Error processing URL ${url}:`, error);
           if (error instanceof CaptchaError) {
             results.errors.push({ url, error: 'Captcha detected - stopping import' });
             break;
