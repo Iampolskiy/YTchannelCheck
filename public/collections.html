@@ -23,10 +23,10 @@
         padding: 16px;
       }
       .detailsBox {
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--line);
         border-radius: 12px;
         padding: 12px;
-        background: rgba(255, 255, 255, 0.03);
+        background: rgba(255, 255, 255, 0.92);
       }
       .detailsGrid {
         display: grid;
@@ -73,7 +73,13 @@
         </div>
 
         <div class="topbar__right">
-          <a class="btn btn--ghost" href="/">← Zurück</a>
+          <nav class="nav">
+            <a href="/" class="nav__link">Home</a>
+            <a href="/collections" class="nav__link nav__link--active"
+              >Collections</a
+            >
+            <a href="/adjust" class="nav__link">Adjust</a>
+          </nav>
         </div>
       </div>
     </header>

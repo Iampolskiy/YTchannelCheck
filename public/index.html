@@ -25,9 +25,11 @@
         </div>
 
         <div class="topbar__right">
-          <a href="/adjust" class="btn btn--ghost">Einstellungen</a>
-          <a href="/collections" class="btn">Collections ansehen</a>
-          <span class="pill">Server: <b>http://localhost:3000</b></span>
+          <nav class="nav">
+            <a href="/" class="nav__link nav__link--active">Home</a>
+            <a href="/collections" class="nav__link">Collections</a>
+            <a href="/adjust" class="nav__link">Adjust</a>
+          </nav>
         </div>
       </div>
     </header>
@@ -96,59 +98,6 @@
 
           <div class="divider"></div>
 
-          <!-- ✅ KI Modelle (Ollama) -->
-          <div class="row">
-            <select id="aiModel1" class="input" title="KI Modell 1">
-              <option value="">— Modell 1 nicht nutzen —</option>
-              <option value="qwen2.5vl:32b">qwen2.5vl:32b</option>
-              <option value="qwen2.5vl:7b">qwen2.5vl:7b</option>
-              <option value="mixtral:8x7b">mixtral:8x7b</option>
-              <option value="gpt-oss:20b">gpt-oss:20b</option>
-              <option value="mistral:7b">mistral:7b</option>
-              <option value="deepseek-r1:8b">deepseek-r1:8b</option>
-              <option value="deepseek-r1:14b">deepseek-r1:14b</option>
-              <option value="deepseek-r1:70b">deepseek-r1:70b</option>
-              <option value="deepseek-r1:32b">deepseek-r1:32b</option>
-              <option value="llama3:8b">llama3:8b</option>
-              <option value="llama3:70b">llama3:70b</option>
-              <option value="llama3.2:latest">llama3.2:latest</option>
-            </select>
-
-            <select id="aiModel2" class="input" title="KI Modell 2">
-              <option value="">— Modell 2 nicht nutzen —</option>
-              <option value="qwen2.5vl:32b">qwen2.5vl:32b</option>
-              <option value="qwen2.5vl:7b">qwen2.5vl:7b</option>
-              <option value="mixtral:8x7b">mixtral:8x7b</option>
-              <option value="gpt-oss:20b">gpt-oss:20b</option>
-              <option value="mistral:7b">mistral:7b</option>
-              <option value="deepseek-r1:8b">deepseek-r1:8b</option>
-              <option value="deepseek-r1:14b">deepseek-r1:14b</option>
-              <option value="deepseek-r1:70b">deepseek-r1:70b</option>
-              <option value="deepseek-r1:32b">deepseek-r1:32b</option>
-              <option value="llama3:8b">llama3:8b</option>
-              <option value="llama3:70b">llama3:70b</option>
-              <option value="llama3.2:latest">llama3.2:latest</option>
-            </select>
-
-            <select id="aiModel3" class="input" title="KI Modell 3">
-              <option value="">— Modell 3 nicht nutzen —</option>
-              <option value="qwen2.5vl:32b">qwen2.5vl:32b</option>
-              <option value="qwen2.5vl:7b">qwen2.5vl:7b</option>
-              <option value="mixtral:8x7b">mixtral:8x7b</option>
-              <option value="gpt-oss:20b">gpt-oss:20b</option>
-              <option value="mistral:7b">mistral:7b</option>
-              <option value="deepseek-r1:8b">deepseek-r1:8b</option>
-              <option value="deepseek-r1:14b">deepseek-r1:14b</option>
-              <option value="deepseek-r1:70b">deepseek-r1:70b</option>
-              <option value="deepseek-r1:32b">deepseek-r1:32b</option>
-              <option value="llama3:8b">llama3:8b</option>
-              <option value="llama3:70b">llama3:70b</option>
-              <option value="llama3.2:latest">llama3.2:latest</option>
-            </select>
-          </div>
-
-          <div class="divider"></div>
-
           <button
             id="btnAiDecision"
             class="btn btn--primary btn--wide"
@@ -212,7 +161,6 @@
        *   POST /process/ungefiltert-to-vorgefiltertCode
        */
       const OPTIONS_KEY = "ytcheck_options_v1";
-      const AI_MODELS_KEY = "ytcheck_ai_models_v1";
 
       /**
        * Defaults (falls noch nichts gespeichert ist).
@@ -233,9 +181,8 @@
         writeDeletedChannels: true,
         dryRun: false,
         limit: 0,
-      };
 
-      const AI_MODEL_DEFAULTS = {
+        // KI Modelle werden in adjust.html gesetzt (und hier mitgeladen)
         model1: "",
         model2: "",
         model3: "",
@@ -259,20 +206,6 @@
         const raw = localStorage.getItem(OPTIONS_KEY);
         const parsed = raw ? safeParseJson(raw) : null;
         return { ...DEFAULTS, ...(parsed || {}) };
-      }
-
-      function loadSavedAiModels() {
-        const raw = localStorage.getItem(AI_MODELS_KEY);
-        const parsed = raw ? safeParseJson(raw) : null;
-        return { ...AI_MODEL_DEFAULTS, ...(parsed || {}) };
-      }
-
-      function saveAiModels(models) {
-        try {
-          localStorage.setItem(AI_MODELS_KEY, JSON.stringify(models || {}));
-        } catch {
-          // ignore
-        }
       }
 
       /**
@@ -520,17 +453,13 @@
        * - limit: 0 => alle
        */
       $("btnAiDecision").addEventListener("click", async () => {
-        const models = {
-          model1: $("aiModel1").value.trim(),
-          model2: $("aiModel2").value.trim(),
-          model3: $("aiModel3").value.trim(),
-        };
-        saveAiModels(models);
-
+        const saved = loadSavedOptions();
         await startJob("/process/ai-check-vorgefiltertCode", {
           dryRun: false,
           limit: 0,
-          ...models,
+          model1: String(saved.model1 || "").trim(),
+          model2: String(saved.model2 || "").trim(),
+          model3: String(saved.model3 || "").trim(),
         });
       });
 
@@ -544,13 +473,7 @@
         setStatus("idle", "Bereit", "Wähle Dateien aus und starte den Upload.");
       });
 
-      // INIT: AI Modelle aus localStorage in Inputs schreiben
-      (function initAiModelsInputs() {
-        const saved = loadSavedAiModels();
-        $("aiModel1").value = saved.model1 || "";
-        $("aiModel2").value = saved.model2 || "";
-        $("aiModel3").value = saved.model3 || "";
-      })();
+      // KI Modelle werden in adjust.html gesetzt (hier keine Inputs mehr).
     </script>
   </body>
 </html>
