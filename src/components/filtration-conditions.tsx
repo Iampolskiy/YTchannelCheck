@@ -47,10 +47,25 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Info, Plus, Trash2 } from "lucide-react";
+import { GripVertical, Info, Plus, Trash2, Check, ChevronsUpDown, Settings } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { AIConfiguration } from "@/components/ai-configuration";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 // Default settings
 const DEFAULT_SETTINGS = {
@@ -138,7 +153,7 @@ function SortableItem({ id, children }: { id: string; children: React.ReactNode 
   return (
     <div ref={setNodeRef} style={style} className="relative group">
       {/* Drag Handle Indicator Strip */}
-      <div 
+      <div
         {...attributes}
         {...listeners}
         className="absolute left-0 top-0 bottom-0 w-1.5 bg-border rounded-l-lg cursor-grab hover:bg-primary/50 transition-colors group-hover:bg-primary/30 z-10 flex flex-col justify-center items-center"
@@ -147,11 +162,121 @@ function SortableItem({ id, children }: { id: string; children: React.ReactNode 
         <div className="h-4 w-0.5 bg-background/50 rounded-full" />
         <div className="h-4 w-0.5 bg-background/50 rounded-full mt-1" />
       </div>
-      
+
       <div className="pl-4">
         {children}
       </div>
     </div>
+  );
+}
+
+// Helper component for model selector
+function ModelSelector({
+  value,
+  onChange,
+  placeholder = "Select model..."
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [availableModels, setAvailableModels] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Load models from aiConfig in localStorage
+    const storedConfig = localStorage.getItem("aiConfig");
+    if (storedConfig) {
+      try {
+        const config = JSON.parse(storedConfig);
+        if (config.models && Array.isArray(config.models)) {
+          setAvailableModels(config.models);
+        }
+      } catch (e) {
+        console.error("Failed to load AI models", e);
+      }
+    }
+  }, [open]); // Refresh when opened
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal text-muted-foreground hover:text-foreground"
+        >
+          {value ? (
+            <span className="text-foreground">{value}</span>
+          ) : (
+            placeholder
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+        <Command>
+          <CommandInput placeholder="Search models..." />
+          <CommandList>
+            <CommandEmpty>
+              <div className="p-2 text-center text-sm">
+                <p className="text-muted-foreground mb-2">No models found.</p>
+                {/* We can't directly open the other dialog easily from here without lifting state,
+                    so we provide a hint or a simple link */}
+                <p className="text-xs">Use the AI Config button in the header to add models.</p>
+              </div>
+            </CommandEmpty>
+            <CommandGroup heading="Available Models">
+              {availableModels.map((model) => (
+                <CommandItem
+                  key={model.id}
+                  value={model.modelName} // Use modelName for search
+                  onSelect={() => {
+                    onChange(model.modelName); // Pass the actual model string (e.g. "llama3:8b")
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === model.modelName ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <div className="flex flex-col">
+                    <span>{model.name}</span>
+                    <span className="text-xs text-muted-foreground">{model.modelName}</span>
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            {/* Fallback for default/hardcoded commonly used models if no config exists */}
+            {availableModels.length === 0 && (
+              <CommandGroup heading="Common Models">
+                {["llama3:8b", "llama2:7b", "mistral", "gemma:7b"].map((m) => (
+                  <CommandItem
+                    key={m}
+                    value={m}
+                    onSelect={() => {
+                      onChange(m);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === m ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {m}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -172,47 +297,47 @@ export function FiltrationConditions() {
         if (parsed.ai && parsed.ai.model === "llama3") {
           parsed.ai.model = "llama3:8b";
         }
-        
+
         setSettings(parsed);
         // Default order: location, language, then all topic filters
         const defaultOrder = ["location", "language", "default-topics"];
-        
+
         // If loaded data has new structure, use it
         if (parsed.prefilter?.topicFilters) {
-           const topicIds = parsed.prefilter.topicFilters.map((t: any) => t.id);
-           // Merge standard filters with dynamic topic filters for ordering
-           const mergedOrder = ["location", "language", ...topicIds];
-           
-           // Use saved order if valid, ensuring all current IDs are present
-           if (parsed.filterOrder) {
-             // Keep saved order but append any new IDs that might not be in it
-             const existing = parsed.filterOrder.filter((id: string) => mergedOrder.includes(id));
-             const missing = mergedOrder.filter(id => !parsed.filterOrder.includes(id));
-             setFilterOrder([...existing, ...missing]);
-           } else {
-             setFilterOrder(mergedOrder);
-           }
+          const topicIds = parsed.prefilter.topicFilters.map((t: any) => t.id);
+          // Merge standard filters with dynamic topic filters for ordering
+          const mergedOrder = ["location", "language", ...topicIds];
+
+          // Use saved order if valid, ensuring all current IDs are present
+          if (parsed.filterOrder) {
+            // Keep saved order but append any new IDs that might not be in it
+            const existing = parsed.filterOrder.filter((id: string) => mergedOrder.includes(id));
+            const missing = mergedOrder.filter(id => !parsed.filterOrder.includes(id));
+            setFilterOrder([...existing, ...missing]);
+          } else {
+            setFilterOrder(mergedOrder);
+          }
         } else {
-           // Migration from old structure to new
-           // Convert old 'topics' object to first item in 'topicFilters' array
-           if (parsed.prefilter?.topics && !parsed.prefilter.topicFilters) {
-              const oldTopics = parsed.prefilter.topics;
-              // Map old single threshold/keywords to new structure if needed, or just default
-              // Simplest migration: Create default topic filter with old keywords
-              parsed.prefilter.topicFilters = [{
-                id: "default-topics",
-                name: "Topic Filters (Negative)",
-                enabled: oldTopics.enabled ?? true,
-                keywords: oldTopics.keywords || oldTopics.kidsKeywords + ", " + oldTopics.gamingKeywords || "",
-                conditions: oldTopics.conditions || [{ minWords: 3, maxChars: 1000 }]
-              }];
-              delete parsed.prefilter.topics;
-              
-              setSettings(parsed);
-              setFilterOrder(["location", "language", "default-topics"]);
-           } else {
-              setFilterOrder(defaultOrder);
-           }
+          // Migration from old structure to new
+          // Convert old 'topics' object to first item in 'topicFilters' array
+          if (parsed.prefilter?.topics && !parsed.prefilter.topicFilters) {
+            const oldTopics = parsed.prefilter.topics;
+            // Map old single threshold/keywords to new structure if needed, or just default
+            // Simplest migration: Create default topic filter with old keywords
+            parsed.prefilter.topicFilters = [{
+              id: "default-topics",
+              name: "Topic Filters (Negative)",
+              enabled: oldTopics.enabled ?? true,
+              keywords: oldTopics.keywords || oldTopics.kidsKeywords + ", " + oldTopics.gamingKeywords || "",
+              conditions: oldTopics.conditions || [{ minWords: 3, maxChars: 1000 }]
+            }];
+            delete parsed.prefilter.topics;
+
+            setSettings(parsed);
+            setFilterOrder(["location", "language", "default-topics"]);
+          } else {
+            setFilterOrder(defaultOrder);
+          }
         }
       } catch (e) {
         console.error("Failed to parse settings", e);
@@ -267,15 +392,15 @@ export function FiltrationConditions() {
 
       // Helper since updatePrefilter logic was for simple keys. We'll update settings directly here.
       const handleTopicUpdate = (key: string, value: any) => {
-         setSettings(prev => ({
-            ...prev,
-            prefilter: {
-              ...prev.prefilter,
-              topicFilters: prev.prefilter.topicFilters.map((t: any) => 
-                t.id === id ? { ...t, [key]: value } : t
-              )
-            }
-         }));
+        setSettings(prev => ({
+          ...prev,
+          prefilter: {
+            ...prev.prefilter,
+            topicFilters: prev.prefilter.topicFilters.map((t: any) =>
+              t.id === id ? { ...t, [key]: value } : t
+            )
+          }
+        }));
       };
 
       return (
@@ -288,11 +413,11 @@ export function FiltrationConditions() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 flex-1">
                 <div className="flex-1 max-w-[200px]">
-                   <Input 
-                      value={topicFilter.name}
-                      onChange={(e) => handleTopicUpdate('name', e.target.value)}
-                      className="font-semibold text-base border-none shadow-none p-0 h-auto focus-visible:ring-0 bg-transparent"
-                   />
+                  <Input
+                    value={topicFilter.name}
+                    onChange={(e) => handleTopicUpdate('name', e.target.value)}
+                    className="font-semibold text-base border-none shadow-none p-0 h-auto focus-visible:ring-0 bg-transparent"
+                  />
                 </div>
                 <TooltipProvider>
                   <Tooltip>
@@ -300,9 +425,9 @@ export function FiltrationConditions() {
                       <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-md">
-                      <p>Configure negative keyword rules. A channel is rejected if it matches ANY of the rules below.<br/>
-                      For each rule: "If <strong>X</strong> words from the list appear within the first <strong>Y</strong> characters."<br/>
-                      This helps filter out channels that mention keywords too frequently early in their content.
+                      <p>Configure negative keyword rules. A channel is rejected if it matches ANY of the rules below.<br />
+                        For each rule: "If <strong>X</strong> words from the list appear within the first <strong>Y</strong> characters."<br />
+                        This helps filter out channels that mention keywords too frequently early in their content.
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -313,7 +438,7 @@ export function FiltrationConditions() {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div>
-                        <Switch 
+                        <Switch
                           checked={topicFilter.enabled}
                           onCheckedChange={(checked) => handleTopicUpdate('enabled', checked)}
                         />
@@ -324,7 +449,7 @@ export function FiltrationConditions() {
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                
+
                 {/* Delete button for dynamic filters (not the first one if we want to enforce at least one, but allow flexibility) */}
                 {settings.prefilter.topicFilters.length > 1 && (
                   <Button
@@ -349,11 +474,11 @@ export function FiltrationConditions() {
             </div>
 
             <CollapsibleContent className="space-y-6">
-              
+
               {/* 1. Keyword Input (Shared) */}
               <div className="space-y-2">
                 <Label>Negative Keywords (Shared List)</Label>
-                <Textarea 
+                <Textarea
                   className="h-32 resize-none"
                   placeholder="e.g. gaming, minecraft, roblox, fortnite..."
                   value={topicFilter.keywords}
@@ -368,9 +493,9 @@ export function FiltrationConditions() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label>Matching Rules (OR Logic)</Label>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="h-7 text-xs gap-1"
                     onClick={() => {
                       const newConditions = [...(topicFilter.conditions || [])];
@@ -381,7 +506,7 @@ export function FiltrationConditions() {
                     <Plus className="h-3 w-3" /> Add Condition
                   </Button>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {(topicFilter.conditions || [{ minWords: 3, maxChars: 1000 }]).map((cond: any, idx: number) => (
                     <div key={idx} className="p-3 border rounded-md bg-muted/30 flex flex-col gap-2 relative group">
@@ -407,8 +532,8 @@ export function FiltrationConditions() {
                       <div className="flex items-center gap-3">
                         <div className="flex-1">
                           <Label className="text-xs mb-1 block">Min Words</Label>
-                          <Input 
-                            type="number" 
+                          <Input
+                            type="number"
                             min="1"
                             className="h-8"
                             value={cond.minWords}
@@ -422,8 +547,8 @@ export function FiltrationConditions() {
                         <span className="text-xs text-muted-foreground pt-5">in</span>
                         <div className="flex-1">
                           <Label className="text-xs mb-1 block">First Chars</Label>
-                          <Input 
-                            type="number" 
+                          <Input
+                            type="number"
                             min="10"
                             className="h-8"
                             value={cond.maxChars}
@@ -480,7 +605,7 @@ export function FiltrationConditions() {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div>
-                        <Switch 
+                        <Switch
                           checked={settings.prefilter.location.enabled}
                           onCheckedChange={(checked) => updatePrefilter('location', 'enabled', checked)}
                         />
@@ -494,7 +619,7 @@ export function FiltrationConditions() {
               </div>
               <CollapsibleContent className="space-y-2">
                 <Label>Allowed Countries (Comma separated)</Label>
-                <Textarea 
+                <Textarea
                   value={settings.prefilter.location.allowedCountries}
                   onChange={(e) => updatePrefilter('location', 'allowedCountries', e.target.value)}
                   className="h-20"
@@ -545,7 +670,7 @@ export function FiltrationConditions() {
               <CollapsibleContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Allowed Languages (e.g. German, Deutsch)</Label>
-                  <Textarea 
+                  <Textarea
                     value={settings.prefilter.language.allowedLanguages}
                     onChange={(e) => updatePrefilter('language', 'allowedLanguages', e.target.value)}
                     className="h-20"
@@ -554,7 +679,7 @@ export function FiltrationConditions() {
                 </div>
                 <div className="space-y-2">
                   <Label>Minimum Required Words</Label>
-                  <Input 
+                  <Input
                     type="number"
                     value={settings.prefilter.language.minGermanWords}
                     onChange={(e) => updatePrefilter('language', 'minGermanWords', parseInt(e.target.value))}
@@ -589,10 +714,10 @@ export function FiltrationConditions() {
                   <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-sm">
-                  <p>Configure the rules for channel filtering. <br/>
-                  - <strong>Prefilter:</strong> Fast, rule-based checks.<br/>
-                  - <strong>AI Prompts:</strong> Advanced content analysis.<br/>
-                  Channels must pass all enabled checks to be marked 'Positive'.
+                  <p>Configure the rules for channel filtering. <br />
+                    - <strong>Prefilter:</strong> Fast, rule-based checks.<br />
+                    - <strong>AI Prompts:</strong> Advanced content analysis.<br />
+                    Channels must pass all enabled checks to be marked 'Positive'.
                   </p>
                 </TooltipContent>
               </Tooltip>
@@ -643,12 +768,12 @@ export function FiltrationConditions() {
               </Button>
             </div>
 
-            <DndContext 
+            <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd}
             >
-              <SortableContext 
+              <SortableContext
                 items={filterOrder}
                 strategy={verticalListSortingStrategy}
               >
@@ -674,41 +799,55 @@ export function FiltrationConditions() {
                       <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-md">
-                      <p>Run analysis with multiple models to improve accuracy.<br/>
-                      - <strong>Single Model:</strong> Faster, relies on one model's decision.<br/>
-                      - <strong>Consensus (2 out of 3):</strong> Runs 3 models. Requires 2 models to agree for a Positive/Negative decision. If split (e.g. 1 positive, 2 negative), the majority wins.</p>
+                      <p>Run analysis with multiple models to improve accuracy.<br />
+                        - <strong>Single Model:</strong> Faster, relies on one model's decision.<br />
+                        - <strong>Consensus (2 out of 3):</strong> Runs 3 models. Requires 2 models to agree for a Positive/Negative decision. If split (e.g. 1 positive, 2 negative), the majority wins.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </div>
 
-              <div className="flex gap-4 items-center">
+              <div className="flex gap-4 items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Switch
                     checked={Array.isArray(settings.ai.model) && settings.ai.model.length > 1}
                     onCheckedChange={(checked) => {
                       // Toggle between single model (string) and multi-model (array)
                       if (checked) {
-                        setSettings(prev => ({ 
-                          ...prev, 
-                          ai: { 
-                            ...prev.ai, 
+                        setSettings(prev => ({
+                          ...prev,
+                          ai: {
+                            ...prev.ai,
                             model: ["llama3:8b", "llama3:8b", "llama3:8b"] // Default to 3 same models or user choice
-                          } 
+                          }
                         }));
                       } else {
-                        setSettings(prev => ({ 
-                          ...prev, 
-                          ai: { 
-                            ...prev.ai, 
-                            model: Array.isArray(prev.ai.model) ? prev.ai.model[0] : prev.ai.model 
-                          } 
+                        setSettings(prev => ({
+                          ...prev,
+                          ai: {
+                            ...prev.ai,
+                            model: Array.isArray(prev.ai.model) ? prev.ai.model[0] : prev.ai.model
+                          }
                         }));
                       }
                     }}
                   />
                   <Label>Enable Multi-Model Consensus</Label>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => {
+                    // Close this dialog and open AI Config
+                    setOpen(false);
+                    // Dispatch a custom event to open AI Config dialog
+                    window.dispatchEvent(new CustomEvent('openAIConfig'));
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add New Model
+                </Button>
               </div>
 
               {Array.isArray(settings.ai.model) ? (
@@ -718,14 +857,14 @@ export function FiltrationConditions() {
                     {[0, 1, 2].map((i) => (
                       <div key={i} className="flex-1 flex flex-col gap-1">
                         <Label className="text-xs font-mono text-muted-foreground">Model #{i + 1}</Label>
-                        <Input
-                          value={settings.ai.model[i]}
-                          onChange={(e) => {
+                        <ModelSelector
+                          value={(settings.ai.model as string[])[i]}
+                          onChange={(val) => {
                             const newModels = [...(settings.ai.model as string[])];
-                            newModels[i] = e.target.value;
+                            newModels[i] = val;
                             setSettings(prev => ({ ...prev, ai: { ...prev.ai, model: newModels } }));
                           }}
-                          placeholder="e.g. llama3:8b"
+                          placeholder="Select model..."
                         />
                       </div>
                     ))}
@@ -734,10 +873,10 @@ export function FiltrationConditions() {
               ) : (
                 <div className="space-y-2">
                   <Label>Ollama Model</Label>
-                  <Input
-                    value={settings.ai.model}
-                    onChange={(e) => setSettings(prev => ({ ...prev, ai: { ...prev.ai, model: e.target.value } }))}
-                    placeholder="e.g. llama3:8b"
+                  <ModelSelector
+                    value={settings.ai.model as string}
+                    onChange={(val) => setSettings((prev: any) => ({ ...prev, ai: { ...prev.ai, model: val } }))}
+                    placeholder="Select model..."
                   />
                 </div>
               )}
@@ -752,14 +891,14 @@ export function FiltrationConditions() {
                       <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-md">
-                      <p>This is the <strong>System Instruction</strong> sent to the AI. It defines the AI's role and the required output format (JSON). <br/><br/>
-                      <strong>Do not change the JSON structure instructions</strong> unless you update the backend parser too.</p>
+                      <p>This is the <strong>System Instruction</strong> sent to the AI. It defines the AI's role and the required output format (JSON). <br /><br />
+                        <strong>Do not change the JSON structure instructions</strong> unless you update the backend parser too.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </div>
               <div className="relative">
-                <Textarea 
+                <Textarea
                   value={settings.ai.masterPrompt}
                   onChange={(e) => setSettings(prev => ({ ...prev, ai: { ...prev.ai, masterPrompt: e.target.value } }))}
                   className="min-h-[150px] font-mono text-xs"
@@ -791,9 +930,9 @@ export function FiltrationConditions() {
                         <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       {/* Using portal to break out of overflow:hidden containers */}
-                      <TooltipContent 
-                        className="max-w-xs bg-popover text-popover-foreground shadow-md border z-[9999]" 
-                        side="right" 
+                      <TooltipContent
+                        className="max-w-xs bg-popover text-popover-foreground shadow-md border z-[9999]"
+                        side="right"
                         align="start"
                       >
                         <div className="space-y-2 text-xs">
@@ -821,8 +960,8 @@ export function FiltrationConditions() {
                   <Plus className="h-3 w-3" /> Add Prompt
                 </Button>
               </div>
-              
-              <DndContext 
+
+              <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
                 onDragEnd={(event) => {
@@ -842,7 +981,7 @@ export function FiltrationConditions() {
                   }
                 }}
               >
-                <SortableContext 
+                <SortableContext
                   items={settings.ai.prompts.map(p => p.id)}
                   strategy={verticalListSortingStrategy}
                 >
@@ -851,7 +990,7 @@ export function FiltrationConditions() {
                       <SortableItem key={prompt.id} id={prompt.id}>
                         <div className="border rounded-lg p-4 space-y-3 relative group">
                           <div className="flex items-center justify-between">
-                            <Input 
+                            <Input
                               value={prompt.name}
                               onChange={(e) => {
                                 const newPrompts = [...settings.ai.prompts];
@@ -860,7 +999,7 @@ export function FiltrationConditions() {
                               }}
                               className="font-medium border-none shadow-none p-0 h-auto focus-visible:ring-0 w-full max-w-[200px] bg-transparent"
                             />
-                            
+
                             <Button
                               variant="ghost"
                               size="icon"
@@ -874,7 +1013,7 @@ export function FiltrationConditions() {
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>
-                          <Textarea 
+                          <Textarea
                             value={prompt.prompt}
                             onChange={(e) => {
                               const newPrompts = [...settings.ai.prompts];
