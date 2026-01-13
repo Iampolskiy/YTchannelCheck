@@ -665,12 +665,82 @@ export function FiltrationConditions() {
 
           {/* AI Settings */}
           <TabsContent value="ai" className="space-y-6 py-4">
-            <div className="space-y-2">
-              <Label>Ollama Model</Label>
-              <Input
-                value={settings.ai.model}
-                onChange={(e) => setSettings(prev => ({ ...prev, ai: { ...prev.ai, model: e.target.value } }))}
-              />
+            <div className="space-y-4 border rounded-lg p-4 bg-card">
+              <div className="flex items-center gap-2">
+                <Label className="text-base font-semibold">Consensus Mechanism</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-md">
+                      <p>Run analysis with multiple models to improve accuracy.<br/>
+                      - <strong>Single Model:</strong> Faster, relies on one model's decision.<br/>
+                      - <strong>Consensus (2 out of 3):</strong> Runs 3 models. Requires 2 models to agree for a Positive/Negative decision. If split (e.g. 1 positive, 2 negative), the majority wins.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+
+              <div className="flex gap-4 items-center">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={Array.isArray(settings.ai.model) && settings.ai.model.length > 1}
+                    onCheckedChange={(checked) => {
+                      // Toggle between single model (string) and multi-model (array)
+                      if (checked) {
+                        setSettings(prev => ({ 
+                          ...prev, 
+                          ai: { 
+                            ...prev.ai, 
+                            model: ["llama3:8b", "llama3:8b", "llama3:8b"] // Default to 3 same models or user choice
+                          } 
+                        }));
+                      } else {
+                        setSettings(prev => ({ 
+                          ...prev, 
+                          ai: { 
+                            ...prev.ai, 
+                            model: Array.isArray(prev.ai.model) ? prev.ai.model[0] : prev.ai.model 
+                          } 
+                        }));
+                      }
+                    }}
+                  />
+                  <Label>Enable Multi-Model Consensus</Label>
+                </div>
+              </div>
+
+              {Array.isArray(settings.ai.model) ? (
+                <div className="grid gap-3 pl-4 border-l-2 border-muted mt-2">
+                  <Label className="text-xs text-muted-foreground">Select 3 Models for Consensus (2/3 Vote):</Label>
+                  <div className="flex gap-2">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="flex-1 flex flex-col gap-1">
+                        <Label className="text-xs font-mono text-muted-foreground">Model #{i + 1}</Label>
+                        <Input
+                          value={settings.ai.model[i]}
+                          onChange={(e) => {
+                            const newModels = [...(settings.ai.model as string[])];
+                            newModels[i] = e.target.value;
+                            setSettings(prev => ({ ...prev, ai: { ...prev.ai, model: newModels } }));
+                          }}
+                          placeholder="e.g. llama3:8b"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Ollama Model</Label>
+                  <Input
+                    value={settings.ai.model}
+                    onChange={(e) => setSettings(prev => ({ ...prev, ai: { ...prev.ai, model: e.target.value } }))}
+                    placeholder="e.g. llama3:8b"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
