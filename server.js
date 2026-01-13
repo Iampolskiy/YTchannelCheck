@@ -110,6 +110,7 @@ import { descriptionNotEmptyCheck } from "./lib/codeChecks/descriptionNotEmptyCh
 import { loadChannelsFromSbLinkFolder } from "./lib/sbSpecialInput.js";
 
 import { runJobAiDecision as runJobAiDecisionOllama } from "./lib/aiDecision/runJobAiDecision.js";
+import { loadPromptText } from "./lib/aiDecision/prompt.js";
 
 // ---------------------------------------------------------------------------
 // __dirname Ersatz (weil ESM)
@@ -437,6 +438,7 @@ function createJob({ options }) {
       channelsTotal: 0,
       channelsDone: 0,
       channelsSkippedDuplicate: 0,
+      channelsSkippedAlreadyExisting: 0,
       ytAboutOk: 0,
       ytAboutFailed: 0,
       ytVideosOk: 0,
@@ -872,6 +874,49 @@ async function processOneChannel({
     })`,
   });
 
+  // ✅ Globaler Duplikat-Check: existiert schon in irgendeiner Collection?
+  // (Standard: true)
+  const skipIfExistsAnyCollection =
+    typeof job?.options?.skipIfExistsAnyCollection === "boolean"
+      ? job.options.skipIfExistsAnyCollection
+      : true;
+
+  if (skipIfExistsAnyCollection && ch?.youtubeId) {
+    try {
+      const existsIn = await findExistingByYoutubeId(ch.youtubeId);
+      if (existsIn.length) {
+        job.progress.channelsSkippedAlreadyExisting++;
+        emitLog(jobId, "info", "Schon vorhanden (DB) → übersprungen", {
+          youtubeId: String(ch.youtubeId),
+          sourceFile,
+          existsIn,
+        });
+
+        job.enriched.push({
+          youtubeId: String(ch.youtubeId),
+          youtubeUrl: ch.youtubeUrl ?? makeYoutubeMainUrl(ch),
+          sourceFile,
+          ok: true,
+          skipped: "alreadyExisting",
+          existsIn,
+        });
+
+        job.progress.channelsDone++;
+        emitSnapshot(jobId, {
+          step: `Übersprungen (schon vorhanden) (${job.progress.channelsDone}/${
+            job.progress.channelsTotal || "?"
+          })`,
+        });
+        return;
+      }
+    } catch (e) {
+      emitLog(jobId, "warn", "Existenz-Check (DB) fehlgeschlagen", {
+        youtubeId: String(ch.youtubeId),
+        error: String(e?.message || e),
+      });
+    }
+  }
+
   let ytResult = null;
 
   try {
@@ -973,6 +1018,46 @@ async function processOneChannel({
       return;
     }
     job.seenFinalYoutubeIds.add(finalYoutubeId);
+
+    // ✅ Globaler Existenz-Check nach Auflösung der stabilen youtubeId
+    if (skipIfExistsAnyCollection) {
+      try {
+        const existsIn = await findExistingByYoutubeId(finalYoutubeId);
+        if (existsIn.length) {
+          job.progress.channelsSkippedAlreadyExisting++;
+          emitLog(jobId, "info", "Schon vorhanden (DB) → übersprungen", {
+            youtubeId: finalYoutubeId,
+            sourceFile,
+            existsIn,
+          });
+
+          job.enriched.push({
+            youtubeId: finalYoutubeId,
+            youtubeUrl: finalYoutubeUrl,
+            sourceFile,
+            ytAboutOk: Boolean(ytResult?.about?.ok),
+            ytVideosOk: Boolean(ytResult?.videos?.ok),
+            channelInfo: ytResult?.channelInfo ?? null,
+            ok: Boolean(ytResult?.ok),
+            skipped: "alreadyExisting",
+            existsIn,
+          });
+
+          job.progress.channelsDone++;
+          emitSnapshot(jobId, {
+            step: `Übersprungen (schon vorhanden) (${
+              job.progress.channelsDone
+            }/${job.progress.channelsTotal || "?"})`,
+          });
+          return;
+        }
+      } catch (e) {
+        emitLog(jobId, "warn", "Existenz-Check (DB) fehlgeschlagen", {
+          youtubeId: finalYoutubeId,
+          error: String(e?.message || e),
+        });
+      }
+    }
 
     const videosList = Array.isArray(ytResult?.videosList)
       ? ytResult.videosList
@@ -1359,8 +1444,18 @@ async function runJobVorgefiltertToCode(jobId) {
 
   const options = job.options || {};
 
+  // ✅ Deutsch Wörter Array (Default oder Custom aus Adjust UI)
+  // Backwards compatible:
+  // - Wenn deutschArrayUseDefault === false -> nutze options.deutschArray (auch wenn leer)
+  // - Sonst: wenn options.deutschArray gesetzt (legacy) -> nutze es
+  // - Sonst: Default aus lib/config/deutschArray.js
+  const deutschArrayUseDefault = options?.deutschArrayUseDefault;
   const deutschArray =
-    Array.isArray(options.deutschArray) && options.deutschArray.length
+    deutschArrayUseDefault === false
+      ? Array.isArray(options.deutschArray)
+        ? options.deutschArray
+        : []
+      : Array.isArray(options.deutschArray) && options.deutschArray.length
       ? options.deutschArray
       : DEUTSCH_WORDS_ARRAY;
 
@@ -1420,6 +1515,12 @@ async function runJobVorgefiltertToCode(jobId) {
 
   emitLog(jobId, "info", "Job gestartet (ungefiltert → vorgefiltertCode)", {
     deutschArraySize: deutschArray.length,
+    deutschArraySource:
+      deutschArrayUseDefault === false
+        ? "custom (force)"
+        : Array.isArray(options.deutschArray) && options.deutschArray.length
+        ? "custom (legacy)"
+        : "default",
     badCharArraySize: badCharArray.length,
     maxBadCharsDistinctPerField,
 
@@ -2395,6 +2496,32 @@ app.get("/api/config/code-filters", (req, res) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Config API: Default Deutsch Wörter Array (für Adjust UI)
+// ---------------------------------------------------------------------------
+app.get("/api/config/deutsch-array", (req, res) => {
+  return res.json({
+    ok: true,
+    words: DEUTSCH_WORDS_ARRAY,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Config API: Default AI Prompt (für Adjust UI)
+// ---------------------------------------------------------------------------
+app.get("/api/config/ai-prompt", async (req, res) => {
+  try {
+    const loaded = await loadPromptText("");
+    return res.json({
+      ok: true,
+      promptFile: loaded.promptFile,
+      promptText: loaded.promptText,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 function getCollectionModelByName(name) {
   if (name === "ungefiltert") return Ungefiltert;
   if (name === "vorgefiltertCode") return VorgefiltertCode;
@@ -2402,6 +2529,66 @@ function getCollectionModelByName(name) {
   if (name === "positiv") return Positiv;
   if (name === "negativ") return Negativ;
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Existenz-Check: youtubeId in ALLEN Collections finden
+// ---------------------------------------------------------------------------
+const ALL_COLLECTIONS = [
+  { name: "ungefiltert", Model: Ungefiltert },
+  { name: "vorgefiltertCode", Model: VorgefiltertCode },
+  { name: "deletedChannels", Model: DeletedChannel },
+  { name: "positiv", Model: Positiv },
+  { name: "negativ", Model: Negativ },
+];
+
+async function findExistingByYoutubeId(youtubeId) {
+  const id = String(youtubeId || "").trim();
+  if (!id) return [];
+  const hits = await Promise.all(
+    ALL_COLLECTIONS.map(async ({ name, Model }) => {
+      const doc = await Model.findOne({ youtubeId })
+        .select({
+          youtubeId: 1,
+          youtubeUrl: 1,
+          lastReason: 1,
+          aiFinalDecision: 1,
+          "channelInfo.title": 1,
+          "channelInfo.handle": 1,
+          "channelInfo.country": 1,
+          "channelDoc.channelInfo.title": 1,
+          "channelDoc.channelInfo.handle": 1,
+        })
+        .lean();
+      if (!doc) return null;
+      const title =
+        doc?.channelInfo?.title ?? doc?.channelDoc?.channelInfo?.title ?? null;
+      const handle =
+        doc?.channelInfo?.handle ??
+        doc?.channelDoc?.channelInfo?.handle ??
+        null;
+      return {
+        collection: name,
+        youtubeId: doc.youtubeId,
+        youtubeUrl: doc.youtubeUrl ?? null,
+        title,
+        handle,
+      };
+    })
+  );
+  return hits.filter(Boolean);
+}
+
+// DETAILS: alle gefundenen Dokumente (voll)
+async function loadExistingDetailsByYoutubeId(youtubeId) {
+  const id = String(youtubeId || "").trim();
+  if (!id) return {};
+  const out = {};
+  for (const { name, Model } of ALL_COLLECTIONS) {
+    const doc = await Model.findOne({ youtubeId: id }).lean();
+    if (doc) out[name] = doc;
+  }
+  return out;
 }
 
 /**
@@ -2537,6 +2724,25 @@ app.get("/api/collection/:name/item/:youtubeId", async (req, res) => {
     }
 
     return res.json({ ok: true, item: doc });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/**
+ * GET /api/existing/:youtubeId
+ * -> gibt zurück in welchen Collections der Kanal existiert + Voll-Dokumente je Collection
+ */
+app.get("/api/existing/:youtubeId", async (req, res) => {
+  try {
+    await connectDb();
+    const youtubeId = String(req.params.youtubeId || "").trim();
+    if (!youtubeId) {
+      return res.status(400).json({ ok: false, error: "youtubeId fehlt" });
+    }
+    const existsIn = await findExistingByYoutubeId(youtubeId);
+    const details = await loadExistingDetailsByYoutubeId(youtubeId);
+    return res.json({ ok: true, youtubeId, existsIn, details });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

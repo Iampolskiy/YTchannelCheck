@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>YouTube Channel Check</title>
     <link rel="stylesheet" href="/styles.css" />
+    <script>
+      // Theme: apply early to avoid flash
+      (function () {
+        const key = "ytcheck_theme";
+        const saved = localStorage.getItem(key);
+        if (saved === "dark")
+          document.documentElement.setAttribute("data-theme", "dark");
+        else document.documentElement.removeAttribute("data-theme");
+      })();
+    </script>
   </head>
 
   <body>
@@ -30,6 +40,11 @@
             <a href="/collections" class="nav__link">Collections</a>
             <a href="/adjust" class="nav__link">Adjust</a>
           </nav>
+          <label class="themeToggle" title="Darkmode umschalten">
+            <span class="themeToggle__label">Dark</span>
+            <span class="themeToggle__switch"></span>
+            <input id="themeToggle" type="checkbox" />
+          </label>
         </div>
       </div>
     </header>
@@ -161,6 +176,7 @@
        *   POST /process/ungefiltert-to-vorgefiltertCode
        */
       const OPTIONS_KEY = "ytcheck_options_v1";
+      const AI_PROMPTS_KEY = "ytcheck_ai_prompts_v1";
 
       /**
        * Defaults (falls noch nichts gespeichert ist).
@@ -173,6 +189,10 @@
         minGermanWordsBase: 3,
         wordsPerRequiredGerman: 80,
         maxGermanWordsCap: 25,
+
+        // Deutsch Wörter Array (optional, kommt aus adjust.html)
+        deutschArrayUseDefault: true,
+        deutschArray: [],
 
         kidsHardDistinctThreshold: 2,
         addictionHardDistinctThreshold: 2,
@@ -222,6 +242,20 @@
         return { ...DEFAULTS, ...(parsed || {}) };
       }
 
+      function loadActiveAiPrompt() {
+        const raw = localStorage.getItem(AI_PROMPTS_KEY);
+        const parsed = raw ? safeParseJson(raw) : null;
+        const activeId = String(parsed?.activeId || "").trim();
+        const prompts = Array.isArray(parsed?.prompts) ? parsed.prompts : [];
+        const active =
+          prompts.find((p) => String(p?.id || "") === activeId) || null;
+        const text = String(active?.text || "").trim();
+        const label = String(active?.name || "").trim();
+        return text
+          ? { promptText: text, promptLabel: label || "custom" }
+          : null;
+      }
+
       /**
        * ==========================================================
        * UI-HELPER
@@ -252,6 +286,51 @@
             <pre class="code">${escapeHtml(JSON.stringify(obj, null, 2))}</pre>
           </div>
         `;
+      }
+
+      // ==========================================================
+      // Details Modal (global), damit es auch außerhalb von startJob() funktioniert
+      // ==========================================================
+      function ensureDetailsModal() {
+        let modal = document.getElementById("detailsModal");
+        if (modal) return modal;
+
+        modal = document.createElement("div");
+        modal.id = "detailsModal";
+        modal.className = "modal hidden";
+        modal.innerHTML = `
+          <div class="modal__backdrop" data-close="1"></div>
+          <div class="modal__panel modal__panel--small">
+            <div class="modal__head">
+              <div class="modal__title" id="detailsTitle">Details</div>
+              <div class="modal__actions">
+                <button class="btn btn--ghost" id="detailsClose">Schließen</button>
+              </div>
+            </div>
+            <div class="modal__body" id="detailsBody"></div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+
+        const close = () => {
+          modal.classList.add("hidden");
+          document.body.classList.remove("modalOpen");
+        };
+
+        modal.addEventListener("click", (e) => {
+          if (e.target?.dataset?.close) close();
+        });
+        modal.querySelector("#detailsClose").addEventListener("click", close);
+
+        return modal;
+      }
+
+      function openDetailsModal(title, htmlBody) {
+        const modal = ensureDetailsModal();
+        modal.querySelector("#detailsTitle").textContent = String(title || "Details");
+        modal.querySelector("#detailsBody").innerHTML = String(htmlBody || "");
+        modal.classList.remove("hidden");
+        document.body.classList.add("modalOpen");
       }
 
       /**
@@ -326,6 +405,14 @@
               <pre class="code" id="jobLogs" style="max-height:320px; overflow:auto;"></pre>
             </div>
           </div>
+
+          <div class="box" id="knownBox">
+            <div class="box__title">Schon vorhanden (DB)</div>
+            <div class="box__body">
+              <div class="muted small" id="knownMeta">0 Treffer</div>
+              <div id="knownList" class="small"></div>
+            </div>
+          </div>
         `;
         $("output").innerHTML = liveBoxHtml + $("output").innerHTML;
 
@@ -333,6 +420,68 @@
         const jobStepEl = document.getElementById("jobStep");
         const jobProgressEl = document.getElementById("jobProgress");
         const jobLogsEl = document.getElementById("jobLogs");
+        const knownMetaEl = document.getElementById("knownMeta");
+        const knownListEl = document.getElementById("knownList");
+
+        const knownMap = new Map(); // youtubeId -> { youtubeId, title, handle, collections[], sourceFile }
+
+        function renderKnownList() {
+          const rows = Array.from(knownMap.values());
+          knownMetaEl.textContent = `${rows.length} Treffer`;
+          if (!rows.length) {
+            knownListEl.innerHTML = '<div class="muted">— noch keine —</div>';
+            return;
+          }
+
+          knownListEl.innerHTML = rows
+            .map((r) => {
+              const title = String(r.title || "").trim();
+              const handle = String(r.handle || "").trim();
+              const labelParts = [];
+              if (title) labelParts.push(title);
+              if (handle) labelParts.push(handle);
+              const label = labelParts.length
+                ? labelParts.join(" · ")
+                : r.youtubeId;
+
+              const cols = Array.isArray(r.collections) ? r.collections : [];
+              const colsLabel = cols.length ? cols.join(", ") : "—";
+              const source = String(r.sourceFile || "").trim();
+
+              return `
+                <div style="display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid var(--border);">
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(
+                      label
+                    )}</div>
+                    <div class="muted small" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                      <span><strong>youtubeId:</strong> ${escapeHtml(
+                        r.youtubeId
+                      )}</span>
+                      <span> • <strong>Collections:</strong> ${escapeHtml(
+                        colsLabel
+                      )}</span>
+                      ${
+                        source
+                          ? ` <span> • <strong>Quelle:</strong> ${escapeHtml(
+                              source
+                            )}</span>`
+                          : ""
+                      }
+                    </div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn btn--ghost btnKnownDetails" data-youtubeid="${escapeHtml(
+                      r.youtubeId
+                    )}">Details</button>
+                  </div>
+                </div>
+              `;
+            })
+            .join("");
+        }
+
+        renderKnownList();
 
         function appendLog(line) {
           jobLogsEl.textContent += line + "\n";
@@ -410,6 +559,29 @@
                 l.extra ? " " + JSON.stringify(l.extra) : ""
               }`
             );
+
+            // ✅ Schon-vorhanden Events sammeln (vom Server)
+            const youtubeId = String(l?.extra?.youtubeId || "").trim();
+            const existsIn = Array.isArray(l?.extra?.existsIn)
+              ? l.extra.existsIn
+              : null;
+            if (youtubeId && existsIn && existsIn.length) {
+              const collections = existsIn
+                .map((x) => String(x?.collection || "").trim())
+                .filter(Boolean);
+              const first = existsIn[0] || {};
+              const title = String(first?.title || "").trim() || null;
+              const handle = String(first?.handle || "").trim() || null;
+
+              knownMap.set(youtubeId, {
+                youtubeId,
+                title,
+                handle,
+                collections,
+                sourceFile: String(l?.extra?.sourceFile || "").trim() || null,
+              });
+              renderKnownList();
+            }
           });
 
           es.addEventListener("ping", () => {});
@@ -460,6 +632,64 @@
         }
       }
 
+      // Delegation: Details in "Schon vorhanden (DB)"
+      document.addEventListener("click", async (e) => {
+        const btn = e.target.closest(".btnKnownDetails");
+        if (!btn) return;
+        const youtubeId = String(btn.dataset.youtubeid || "").trim();
+        if (!youtubeId) return;
+
+        btn.disabled = true;
+        const oldText = btn.textContent;
+        btn.textContent = "…";
+        try {
+          const r = await fetch(
+            `/api/existing/${encodeURIComponent(youtubeId)}`,
+            {
+              cache: "no-store",
+            }
+          );
+          const j = await r.json().catch(() => null);
+          if (!r.ok || !j?.ok) throw new Error(j?.error || "Details Fehler");
+
+          const existsIn = Array.isArray(j.existsIn) ? j.existsIn : [];
+          const details = j.details || {};
+          const cols = existsIn
+            .map((x) => String(x?.collection || "").trim())
+            .filter(Boolean);
+
+          const body = `
+            <div class="muted small" style="margin-bottom:10px;">
+              <strong>youtubeId:</strong> ${escapeHtml(youtubeId)}<br/>
+              <strong>Gefunden in:</strong> ${escapeHtml(
+                cols.join(", ") || "—"
+              )}
+            </div>
+            ${Object.entries(details)
+              .map(([name, doc]) => {
+                return `
+                  <details class="rawDetails" open>
+                    <summary><strong>${escapeHtml(
+                      name
+                    )}</strong> <span class="muted small">— komplettes Dokument</span></summary>
+                    <pre class="code" style="max-height:52vh; overflow:auto;">${escapeHtml(
+                      JSON.stringify(doc, null, 2)
+                    )}</pre>
+                  </details>
+                `;
+              })
+              .join("")}
+          `;
+
+          openDetailsModal(`Details: ${youtubeId}`, body);
+        } catch (err) {
+          alert(String(err?.message || err));
+        } finally {
+          btn.disabled = false;
+          btn.textContent = oldText;
+        }
+      });
+
       /**
        * ==========================================================
        * PROZESS 1 (NORMAL /input)
@@ -509,12 +739,14 @@
        */
       $("btnAiDecision").addEventListener("click", async () => {
         const saved = loadSavedOptions();
+        const prompt = loadActiveAiPrompt();
         await startJob("/process/ai-check-vorgefiltertCode", {
           dryRun: false,
           limit: 0,
           model1: String(saved.model1 || "").trim(),
           model2: String(saved.model2 || "").trim(),
           model3: String(saved.model3 || "").trim(),
+          ...(prompt ? prompt : {}),
         });
       });
 
@@ -529,6 +761,22 @@
       });
 
       // KI Modelle werden in adjust.html gesetzt (hier keine Inputs mehr).
+
+      // Theme toggle
+      (function () {
+        const key = "ytcheck_theme";
+        const input = document.getElementById("themeToggle");
+        if (!input) return;
+        input.checked =
+          document.documentElement.getAttribute("data-theme") === "dark";
+        input.addEventListener("change", () => {
+          const isDark = Boolean(input.checked);
+          if (isDark)
+            document.documentElement.setAttribute("data-theme", "dark");
+          else document.documentElement.removeAttribute("data-theme");
+          localStorage.setItem(key, isDark ? "dark" : "light");
+        });
+      })();
     </script>
   </body>
 </html>

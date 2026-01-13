@@ -11,6 +11,16 @@
     -->
     <link rel="stylesheet" href="/styles.css" />
 
+    <script>
+      // Theme: apply early to avoid flash
+      (function () {
+        const key = "ytcheck_theme";
+        const saved = localStorage.getItem(key);
+        if (saved === "dark") document.documentElement.setAttribute("data-theme", "dark");
+        else document.documentElement.removeAttribute("data-theme");
+      })();
+    </script>
+
     <style>
       /* Kleine Zusatz-Styles nur für diese Seite */
       .grid2 {
@@ -107,6 +117,11 @@
             <a href="/collections" class="nav__link">Collections</a>
             <a href="/adjust" class="nav__link nav__link--active">Adjust</a>
           </nav>
+          <label class="themeToggle" title="Darkmode umschalten">
+            <span class="themeToggle__label">Dark</span>
+            <span class="themeToggle__switch"></span>
+            <input id="themeToggle" type="checkbox" />
+          </label>
         </div>
       </div>
     </header>
@@ -276,6 +291,60 @@
 
           <!--
             =========================================================
+            3b) Deutsch Wörter Array (deutschArray.js) – editierbar
+            =========================================================
+            server.js nutzt:
+              options.deutschArray (Custom) oder Default aus lib/config/deutschArray.js
+          -->
+          <div class="card" style="padding: 12px; box-shadow: none; margin: 0">
+            <div class="card__head">
+              <h2>Deutsch Wörter (deutschArray)</h2>
+              <span id="count_deutschArray" class="pillSmall">— Wörter</span>
+            </div>
+            <div class="field">
+              <label style="margin-top: 10px">
+                <input id="deutschArrayUseDefault" type="checkbox" />
+                Default-Liste verwenden
+              </label>
+              <div class="help">
+                Wenn deaktiviert, wird die unten stehende Liste als Custom-Liste
+                an den Server gesendet (für den Deutsch-Wörter-Check).
+              </div>
+              <div class="taWithLines taWithLines--fixed">
+                <div id="ln_deutschArray" class="lineNums" aria-hidden="true">
+                  1
+                </div>
+                <textarea
+                  id="deutschArrayText"
+                  class="input input--textarea mono"
+                  rows="10"
+                  placeholder="ein Wort pro Zeile…"
+                ></textarea>
+              </div>
+              <div class="row" style="margin-top: 10px">
+                <button
+                  id="btnResetDeutschArray"
+                  class="btn btn--ghost"
+                  type="button"
+                >
+                  Default laden
+                </button>
+                <button
+                  class="btn btn--ghost"
+                  type="button"
+                  data-fullscreen-editor="deutschArrayText"
+                  data-fullscreen-title="Deutsch Wörter (deutschArray)"
+                >
+                  Bearbeiten
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!--
+            =========================================================
             4) Code Filter (Kids / Sucht / Kampfsport) – Wörter + Reihenfolge
             =========================================================
           -->
@@ -283,7 +352,7 @@
             <label>Code Filter</label>
             <div class="help">
               Du kannst hier
-              <b>Wörter/Phrasen bearbeiten</b> und per Drag&Drop die
+              <b>Words bearbeiten</b> und per Drag&Drop die
               <b>Reihenfolge</b> der Filter festlegen. Leere/disabled Filter
               werden übersprungen.
             </div>
@@ -295,39 +364,171 @@
                 <span class="dragHandle" title="Ziehen zum Sortieren">⋮⋮</span>
                 <span class="dragName">Kids Hard</span>
               </div>
-              <label class="toggle">
-                <input id="enable_kidsHard" type="checkbox" />
-                aktiv
-              </label>
+              <div class="dragRight">
+                <div class="miniField" title="distinctThreshold (wie viele verschiedene Treffer bis Reject)">
+                  <span class="miniLabel">Anzahl damit greift:</span>
+                  <input
+                    id="mini_kidsHardDistinctThreshold"
+                    class="input miniInput mono"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </div>
+                <button
+                  class="btn btn--ghost btn--xs"
+                  type="button"
+                  data-jump="kidsHardEditor"
+                  title="Zur Wörterliste springen"
+                >
+                  Wörter bearbeiten
+                </button>
+                <label class="toggle">
+                  <input id="enable_kidsHard" type="checkbox" />
+                  aktiv
+                </label>
+              </div>
             </li>
             <li class="dragItem" draggable="true" data-id="addictionHard">
               <div class="dragLeft">
                 <span class="dragHandle" title="Ziehen zum Sortieren">⋮⋮</span>
                 <span class="dragName">Addiction Hard</span>
               </div>
-              <label class="toggle">
-                <input id="enable_addictionHard" type="checkbox" />
-                aktiv
-              </label>
+              <div class="dragRight">
+                <div class="miniField" title="distinctThreshold (wie viele verschiedene Treffer bis Reject)">
+                  <span class="miniLabel">Anzahl damit greift:</span>
+                  <input
+                    id="mini_addictionHardDistinctThreshold"
+                    class="input miniInput mono"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </div>
+                <button
+                  class="btn btn--ghost btn--xs"
+                  type="button"
+                  data-jump="addictionHardEditor"
+                  title="Zur Wörterliste springen"
+                >
+                  Wörter bearbeiten
+                </button>
+                <label class="toggle">
+                  <input id="enable_addictionHard" type="checkbox" />
+                  aktiv
+                </label>
+              </div>
             </li>
             <li class="dragItem" draggable="true" data-id="combatSports">
               <div class="dragLeft">
                 <span class="dragHandle" title="Ziehen zum Sortieren">⋮⋮</span>
                 <span class="dragName">Combat Sports</span>
               </div>
-              <label class="toggle">
-                <input id="enable_combatSports" type="checkbox" />
-                aktiv
-              </label>
+              <div class="dragRight">
+                <div class="miniField" title="distinctThreshold (wie viele verschiedene Treffer bis Reject)">
+                  <span class="miniLabel">Anzahl damit greift:</span>
+                  <input
+                    id="mini_combatSportsDistinctThreshold"
+                    class="input miniInput mono"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </div>
+                <button
+                  class="btn btn--ghost btn--xs"
+                  type="button"
+                  data-jump="combatSportsEditor"
+                  title="Zur Wörterliste springen"
+                >
+                  Wörter bearbeiten
+                </button>
+                <label class="toggle">
+                  <input id="enable_combatSports" type="checkbox" />
+                  aktiv
+                </label>
+              </div>
             </li>
           </ul>
 
           <div class="divider"></div>
 
-          <!-- Editor: Kids -->
+          <!--
+            =========================================================
+            4b) Array Vergleich (Schnittmenge)
+            =========================================================
+            Vergleicht zwei ausgewählte Arrays und zeigt die Wörter,
+            die in beiden vorkommen (case-insensitive).
+          -->
           <div class="card" style="padding: 12px; box-shadow: none; margin: 0">
             <div class="card__head">
-              <h2>Kids Hard Phrases</h2>
+              <h2>Array Vergleich</h2>
+              <span id="compareMeta" class="pillSmall">—</span>
+            </div>
+            <div class="field">
+              <div class="help">
+                Wähle mindestens zwei Wortsammlungen und klicke auf
+                <b>Vergleichen</b>. Es werden nur die Wörter angezeigt, die in
+                <b>allen</b> ausgewählten Arrays vorhanden sind.
+              </div>
+              <div class="compareRow">
+                <div class="field" style="margin: 0">
+                  <label>Wortsammlungen (Arrays)</label>
+                  <div id="compareSelectList" class="compareSelectList"></div>
+                  <div class="row" style="margin-top: 10px">
+                    <button
+                      id="btnCompareAdd"
+                      class="btn btn--ghost"
+                      type="button"
+                    >
+                      Weitere Wortsammlung hinzufügen
+                    </button>
+                    <button id="btnCompare" class="btn btn--primary" type="button">
+                      Vergleichen
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <label class="toggle" style="margin-top: 10px">
+                <input id="compareTokenize" type="checkbox" />
+                Als <b>Wörter</b> vergleichen (Tokens aus Phrasen extrahieren)
+              </label>
+              <div class="help">
+                Aktiv: „für kinder“ und „kinder kanal“ teilen das Wort
+                <span class="mono">kinder</span> → wird als Treffer angezeigt. <br />
+                Deaktiv: es werden nur <b>exakt gleiche Zeilen</b> als Treffer gezählt
+                (inkl. Vollbild-Löschen aus A/B).
+              </div>
+              <div class="divider"></div>
+              <div class="box">
+                <div class="box__title compareHead">
+                  <span>Gemeinsame Wörter (Intersection)</span>
+                  <button
+                    id="btnCompareFullscreen"
+                    class="btn btn--ghost btn--xs"
+                    type="button"
+                  >
+                    Bearbeiten
+                  </button>
+                </div>
+                <div id="compareList" class="compareList">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Editor: Kids -->
+          <div
+            id="kidsHardEditor"
+            class="card"
+            style="padding: 12px; box-shadow: none; margin: 0"
+          >
+            <div class="card__head">
+              <h2>Kids Hard Words</h2>
               <span id="count_kidsHard" class="pillSmall">— Wörter</span>
             </div>
             <div class="field">
@@ -350,12 +551,17 @@
                 Wenn deaktiviert, wird die unten stehende Liste als Custom-Liste
                 an den Server gesendet.
               </div>
-              <textarea
-                id="kidsHardPhrasesText"
-                class="input input--textarea mono"
-                rows="10"
-                placeholder="eine Phrase pro Zeile…"
-              ></textarea>
+              <div class="taWithLines taWithLines--fixed">
+                <div id="ln_kidsHard" class="lineNums" aria-hidden="true">
+                  1
+                </div>
+                <textarea
+                  id="kidsHardPhrasesText"
+                  class="input input--textarea mono"
+                  rows="10"
+                  placeholder="ein Wort pro Zeile…"
+                ></textarea>
+              </div>
               <div class="row" style="margin-top: 10px">
                 <button
                   id="btnResetKidsList"
@@ -364,6 +570,14 @@
                 >
                   Default laden
                 </button>
+                <button
+                  class="btn btn--ghost"
+                  type="button"
+                  data-fullscreen-editor="kidsHardPhrasesText"
+                  data-fullscreen-title="Kids Hard Words"
+                >
+                  Bearbeiten
+                </button>
               </div>
             </div>
           </div>
@@ -371,9 +585,13 @@
           <div class="divider"></div>
 
           <!-- Editor: Addiction -->
-          <div class="card" style="padding: 12px; box-shadow: none; margin: 0">
+          <div
+            id="addictionHardEditor"
+            class="card"
+            style="padding: 12px; box-shadow: none; margin: 0"
+          >
             <div class="card__head">
-              <h2>Addiction Hard Phrases</h2>
+              <h2>Addiction Hard Words</h2>
               <span id="count_addictionHard" class="pillSmall">— Wörter</span>
             </div>
             <div class="field">
@@ -394,12 +612,17 @@
                 <input id="addictionHardPhrasesUseDefault" type="checkbox" />
                 Default-Liste verwenden
               </label>
-              <textarea
-                id="addictionHardPhrasesText"
-                class="input input--textarea mono"
-                rows="10"
-                placeholder="eine Phrase pro Zeile…"
-              ></textarea>
+              <div class="taWithLines taWithLines--fixed">
+                <div id="ln_addictionHard" class="lineNums" aria-hidden="true">
+                  1
+                </div>
+                <textarea
+                  id="addictionHardPhrasesText"
+                  class="input input--textarea mono"
+                  rows="10"
+                  placeholder="ein Wort pro Zeile…"
+                ></textarea>
+              </div>
               <div class="row" style="margin-top: 10px">
                 <button
                   id="btnResetAddictionList"
@@ -408,6 +631,14 @@
                 >
                   Default laden
                 </button>
+                <button
+                  class="btn btn--ghost"
+                  type="button"
+                  data-fullscreen-editor="addictionHardPhrasesText"
+                  data-fullscreen-title="Addiction Hard Words"
+                >
+                  Bearbeiten
+                </button>
               </div>
             </div>
           </div>
@@ -415,9 +646,13 @@
           <div class="divider"></div>
 
           <!-- Editor: Combat -->
-          <div class="card" style="padding: 12px; box-shadow: none; margin: 0">
+          <div
+            id="combatSportsEditor"
+            class="card"
+            style="padding: 12px; box-shadow: none; margin: 0"
+          >
             <div class="card__head">
-              <h2>Combat Sports Phrases</h2>
+              <h2>Combat Sports Words</h2>
               <span id="count_combatSports" class="pillSmall">— Wörter</span>
             </div>
             <div class="field">
@@ -438,12 +673,17 @@
                 <input id="combatSportsPhrasesUseDefault" type="checkbox" />
                 Default-Liste verwenden
               </label>
-              <textarea
-                id="combatSportsPhrasesText"
-                class="input input--textarea mono"
-                rows="10"
-                placeholder="eine Phrase pro Zeile…"
-              ></textarea>
+              <div class="taWithLines taWithLines--fixed">
+                <div id="ln_combatSports" class="lineNums" aria-hidden="true">
+                  1
+                </div>
+                <textarea
+                  id="combatSportsPhrasesText"
+                  class="input input--textarea mono"
+                  rows="10"
+                  placeholder="ein Wort pro Zeile…"
+                ></textarea>
+              </div>
               <div class="row" style="margin-top: 10px">
                 <button
                   id="btnResetCombatList"
@@ -451,6 +691,14 @@
                   type="button"
                 >
                   Default laden
+                </button>
+                <button
+                  class="btn btn--ghost"
+                  type="button"
+                  data-fullscreen-editor="combatSportsPhrasesText"
+                  data-fullscreen-title="Combat Sports Words"
+                >
+                  Bearbeiten
                 </button>
               </div>
             </div>
@@ -573,6 +821,67 @@
 
           <div class="divider"></div>
 
+          <!-- =========================================================
+               KI Prompt Manager (Versionen) – lokal im Browser
+               ========================================================= -->
+          <div class="card" style="padding: 12px; box-shadow: none; margin: 0">
+            <div class="card__head">
+              <h2>KI Prompt (Versionen)</h2>
+              <span id="promptStatus" class="pillSmall">—</span>
+            </div>
+            <div class="field">
+              <div class="help">
+                Hier kannst du den Prompt bearbeiten und mehrere Versionen
+                speichern. Die <b>aktive</b> Version wird beim Start der
+                <span class="mono">KI Prüfung</span> verwendet.
+              </div>
+              <div class="compareRow" style="grid-template-columns: 1fr auto auto auto auto; margin-top: 10px;">
+                <div class="field" style="margin:0;">
+                  <label for="promptSelect">Prompt Version</label>
+                  <select id="promptSelect" class="input"></select>
+                </div>
+                <div class="field" style="margin:0; align-self:end;">
+                  <button id="btnPromptNew" class="btn btn--ghost" type="button">Neu</button>
+                </div>
+                <div class="field" style="margin:0; align-self:end;">
+                  <button id="btnPromptDuplicate" class="btn btn--ghost" type="button">Duplizieren</button>
+                </div>
+                <div class="field" style="margin:0; align-self:end;">
+                  <button id="btnPromptRename" class="btn btn--ghost" type="button">Umbenennen</button>
+                </div>
+                <div class="field" style="margin:0; align-self:end;">
+                  <button id="btnPromptDelete" class="btn btn--ghost" type="button">Löschen</button>
+                </div>
+              </div>
+
+              <div class="row" style="margin-top: 10px">
+                <button id="btnPromptSetActive" class="btn btn--primary" type="button">
+                  Als aktiv setzen
+                </button>
+                <button id="btnPromptSave" class="btn btn--ghost" type="button">
+                  Änderungen speichern
+                </button>
+                <button id="btnPromptLoadDefault" class="btn btn--ghost" type="button">
+                  Default laden
+                </button>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="taWithLines taWithLines--fixed">
+                <div class="lineNums" aria-hidden="true">P</div>
+                <textarea
+                  id="promptText"
+                  class="input input--textarea mono"
+                  rows="10"
+                  placeholder="Prompt Text… ({{CHANNEL_JSON}} wird ersetzt)"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
           <!-- Actions -->
           <div class="actions">
             <button id="btnSave" class="btn btn--primary">Speichern</button>
@@ -632,6 +941,143 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
       </div>
     </footer>
 
+    <!-- Vollbild Editor Modal (Listen-Editor mit Suche + Delete Buttons) -->
+    <div id="fullEditorModal" class="modal hidden" aria-hidden="true">
+      <div class="modal__backdrop" data-modal-close="1"></div>
+      <div class="modal__panel" role="dialog" aria-modal="true">
+        <div class="modal__head">
+          <div class="modal__title" id="modalTitle">—</div>
+          <div class="modal__actions">
+            <button id="btnModalApply" class="btn btn--primary" type="button">
+              Übernehmen
+            </button>
+            <button class="btn btn--ghost" type="button" data-modal-close="1">
+              Schließen
+            </button>
+          </div>
+        </div>
+        <div class="modal__body">
+          <div class="modal__toolbar">
+            <input
+              id="modalSearch"
+              class="input mono"
+              type="text"
+              placeholder="Suchen… (Filter)"
+            />
+            <button
+              id="btnModalUndo"
+              class="btn btn--ghost"
+              type="button"
+              disabled
+              title="Letzte Löschung rückgängig"
+            >
+              Rückgängig
+            </button>
+            <button id="btnModalAdd" class="btn btn--ghost" type="button">
+              + Wort hinzufügen
+            </button>
+          </div>
+          <div class="modal__list" id="modalList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compare Modal: Intersection bearbeiten (löschen -> aus A/B/both entfernen) -->
+    <div id="compareModal" class="modal hidden" aria-hidden="true">
+      <div class="modal__backdrop" data-compare-close="1"></div>
+      <div class="modal__panel" role="dialog" aria-modal="true">
+        <div class="modal__head">
+          <div class="modal__title" id="compareModalTitle">Array Vergleich</div>
+          <div class="modal__actions">
+            <button
+              class="btn btn--ghost"
+              type="button"
+              data-compare-close="1"
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+        <div class="modal__body">
+          <div class="modal__toolbar">
+            <input
+              id="compareModalSearch"
+              class="input mono"
+              type="text"
+              placeholder="Suchen… (Filter)"
+            />
+          </div>
+          <div class="modal__list" id="compareModalList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compare Add Prompt -->
+    <div id="compareAddPrompt" class="modal hidden" aria-hidden="true">
+      <div class="modal__backdrop" data-compare-add-close="1"></div>
+      <div class="modal__panel modal__panel--small" role="dialog" aria-modal="true">
+        <div class="modal__head">
+          <div class="modal__title">Wortsammlung hinzufügen</div>
+          <div class="modal__actions">
+            <button class="btn btn--ghost" type="button" data-compare-add-close="1">
+              Schließen
+            </button>
+          </div>
+        </div>
+        <div class="modal__body">
+          <div class="field">
+            <label for="compareAddSelect">Welche Wortsammlung?</label>
+            <select id="compareAddSelect" class="input"></select>
+            <div class="help">
+              Es wird eine neue Auswahlzeile hinzugefügt. (Du kannst sie danach auch wieder entfernen.)
+            </div>
+          </div>
+          <div class="actions">
+            <button id="btnCompareAddApply" class="btn btn--primary" type="button">
+              Hinzufügen
+            </button>
+            <button class="btn btn--ghost" type="button" data-compare-add-close="1">
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete prompt for compare -->
+    <div id="compareDeletePrompt" class="modal hidden" aria-hidden="true">
+      <div class="modal__backdrop" data-compare-prompt-close="1"></div>
+      <div class="modal__panel modal__panel--small" role="dialog" aria-modal="true">
+        <div class="modal__head">
+          <div class="modal__title">Löschen?</div>
+          <div class="modal__actions">
+            <button
+              class="btn btn--ghost"
+              type="button"
+              data-compare-prompt-close="1"
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+        <div class="modal__body">
+          <div class="help" id="comparePromptText">—</div>
+          <div class="divider"></div>
+          <div id="compareDelOptions"></div>
+          <div class="divider"></div>
+          <div class="actions">
+            <button id="btnCompareDelApply" class="btn btn--primary" type="button">
+              Löschen
+            </button>
+            <button class="btn btn--ghost" type="button" data-compare-prompt-close="1">
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script>
       /**
        * ==========================================================
@@ -649,8 +1095,25 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
        */
 
       const OPTIONS_KEY = "ytcheck_options_v1";
+      const AI_PROMPTS_KEY = "ytcheck_ai_prompts_v1";
       const $ = (id) => document.getElementById(id);
       const CODE_FILTERS_URL = "/api/config/code-filters";
+      const DEUTSCH_ARRAY_URL = "/api/config/deutsch-array";
+      const AI_PROMPT_URL = "/api/config/ai-prompt";
+
+      // Theme toggle
+      (function () {
+        const key = "ytcheck_theme";
+        const input = document.getElementById("themeToggle");
+        if (!input) return;
+        input.checked = document.documentElement.getAttribute("data-theme") === "dark";
+        input.addEventListener("change", () => {
+          const isDark = Boolean(input.checked);
+          if (isDark) document.documentElement.setAttribute("data-theme", "dark");
+          else document.documentElement.removeAttribute("data-theme");
+          localStorage.setItem(key, isDark ? "dark" : "light");
+        });
+      })();
 
       // Default Code Filter Config wird vom Server geladen (für Anzeige/Reset)
       let DEFAULT_CODE_FILTER_ORDER = [
@@ -662,6 +1125,16 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
         kidsHard: [],
         addictionHard: [],
         combatSports: [],
+      };
+      let DEFAULT_DEUTSCH_ARRAY = [];
+
+      // Merkt sich Custom-Listen, damit togglen Default <-> Custom deine Eingaben nicht zerstört
+      // Wir cachen als Array (reine Words). Die Index-Nummern werden links separat angezeigt.
+      const CUSTOM_LIST_CACHE = {
+        kidsHard: [],
+        addictionHard: [],
+        combatSports: [],
+        deutschArray: [],
       };
 
       /**
@@ -703,10 +1176,121 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
         addictionHardPhrases: [],
         combatSportsPhrasesUseDefault: true,
         combatSportsPhrases: [],
+
+        // Deutsch Wörter Array (für germanWordsDistinctTotalCheck)
+        deutschArrayUseDefault: true,
+        deutschArray: [],
       };
 
       function setStatus(text) {
         $("statusPill").textContent = text;
+      }
+
+      function escapeHtml(str) {
+        return String(str ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function nowIso() {
+        return new Date().toISOString();
+      }
+
+      function uuid() {
+        try {
+          return crypto.randomUUID();
+        } catch {
+          return String(Date.now()) + "_" + String(Math.random()).slice(2);
+        }
+      }
+
+      function loadAiPromptStore() {
+        const raw = localStorage.getItem(AI_PROMPTS_KEY);
+        const parsed = raw ? safeParseJson(raw) : null;
+        const prompts = Array.isArray(parsed?.prompts) ? parsed.prompts : [];
+        const activeId = String(parsed?.activeId || "").trim();
+        return {
+          activeId,
+          prompts: prompts
+            .map((p) => ({
+              id: String(p?.id || "").trim(),
+              name: String(p?.name || "").trim() || "Prompt",
+              text: String(p?.text || ""),
+              updatedAt: String(p?.updatedAt || "").trim() || null,
+            }))
+            .filter((p) => p.id),
+        };
+      }
+
+      function saveAiPromptStore(store) {
+        localStorage.setItem(AI_PROMPTS_KEY, JSON.stringify(store, null, 2));
+      }
+
+      function setPromptStatus(text) {
+        const el = $("promptStatus");
+        if (el) el.textContent = text;
+      }
+
+      function renderPromptSelect(store, selectedId = null) {
+        const sel = $("promptSelect");
+        if (!sel) return;
+        const opts = store.prompts
+          .map((p) => {
+            const activeMark = p.id === store.activeId ? " ★" : "";
+            return `<option value="${escapeHtml(p.id)}">${escapeHtml(
+              p.name + activeMark
+            )}</option>`;
+          })
+          .join("");
+        sel.innerHTML = opts || `<option value="">(keine)</option>`;
+        const pick = selectedId || store.activeId || (store.prompts[0]?.id ?? "");
+        sel.value = pick;
+      }
+
+      function getSelectedPrompt(store) {
+        const sel = $("promptSelect");
+        const id = String(sel?.value || "").trim();
+        return store.prompts.find((p) => p.id === id) || null;
+      }
+
+      async function ensureDefaultPromptInStore() {
+        const store = loadAiPromptStore();
+        if (store.prompts.length) return store;
+        // first run: load default from server
+        try {
+          const r = await fetch(AI_PROMPT_URL, { cache: "no-store" });
+          const j = await r.json().catch(() => null);
+          if (r.ok && j?.ok && typeof j.promptText === "string") {
+            const id = uuid();
+            const init = {
+              activeId: id,
+              prompts: [
+                {
+                  id,
+                  name: "Default",
+                  text: j.promptText,
+                  updatedAt: nowIso(),
+                },
+              ],
+            };
+            saveAiPromptStore(init);
+            return init;
+          }
+        } catch {}
+        // fallback: empty
+        return store;
+      }
+
+      async function loadServerDefaultPromptText() {
+        const r = await fetch(AI_PROMPT_URL, { cache: "no-store" });
+        const j = await r.json().catch(() => null);
+        if (!r.ok || !j?.ok || typeof j.promptText !== "string") {
+          throw new Error(j?.error || "Default Prompt konnte nicht geladen werden");
+        }
+        return String(j.promptText || "");
       }
 
       function safeParseJson(raw) {
@@ -762,6 +1346,403 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
           .map((x) => String(x || "").trim())
           .filter(Boolean)
           .join("\n");
+      }
+
+      // ----------------------------------------------------------
+      // Fester Index (nicht editierbar): Line-number gutter links
+      // ----------------------------------------------------------
+      function refreshLineNumbers(textareaId, lineNumbersId) {
+        const ta = $(textareaId);
+        const ln = $(lineNumbersId);
+        if (!ta || !ln) return;
+
+        const lineCount = String(ta.value ?? "").split(/\r?\n/).length || 1;
+        const n = Math.max(1, lineCount);
+        ln.textContent = Array.from({ length: n }, (_, i) =>
+          String(i + 1)
+        ).join("\n");
+        ln.scrollTop = ta.scrollTop;
+      }
+
+      function refreshAllLineNumbers() {
+        refreshLineNumbers("deutschArrayText", "ln_deutschArray");
+        refreshLineNumbers("kidsHardPhrasesText", "ln_kidsHard");
+        refreshLineNumbers("addictionHardPhrasesText", "ln_addictionHard");
+        refreshLineNumbers("combatSportsPhrasesText", "ln_combatSports");
+      }
+
+      function attachLineNumbers(
+        textareaId,
+        lineNumbersId,
+        useDefaultCheckboxId
+      ) {
+        const ta = $(textareaId);
+        const ln = $(lineNumbersId);
+        const cb = $(useDefaultCheckboxId);
+        if (!ta || !ln) return;
+
+        ta.addEventListener("input", () =>
+          refreshLineNumbers(textareaId, lineNumbersId)
+        );
+        ta.addEventListener("scroll", () => {
+          ln.scrollTop = ta.scrollTop;
+        });
+
+        // Optional cleanup: beim Verlassen Custom-Liste bereinigen (leere Zeilen/dupes raus)
+        ta.addEventListener("blur", () => {
+          if (cb && cb.checked) {
+            refreshLineNumbers(textareaId, lineNumbersId);
+            return;
+          }
+          const arr = phrasesTextToArray(ta.value);
+          ta.value = phrasesArrayToText(arr);
+          refreshLineNumbers(textareaId, lineNumbersId);
+        });
+
+        refreshLineNumbers(textareaId, lineNumbersId);
+      }
+
+      // -----------------------------
+      // Vollbild-Editor (Modal)
+      // -----------------------------
+      let modalSourceTextareaId = null;
+      let modalItems = []; // array of strings (words)
+      let modalUndoStack = []; // stack of { idx, value }
+
+      function updateUndoButton() {
+        const btn = $("btnModalUndo");
+        if (!btn) return;
+        btn.disabled = modalUndoStack.length === 0;
+      }
+
+      function openFullEditor({ textareaId, title }) {
+        const modal = $("fullEditorModal");
+        const src = $(textareaId);
+        if (!modal || !src) return;
+        if (src.disabled) return;
+
+        modalSourceTextareaId = textareaId;
+        $("modalTitle").textContent = String(title || "Editor");
+
+        modalItems = phrasesTextToArray(String(src.value || ""));
+        modalUndoStack = [];
+        updateUndoButton();
+        if ($("modalSearch")) $("modalSearch").value = "";
+        renderModalList();
+
+        modal.classList.remove("hidden");
+        modal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("modalOpen");
+
+        setTimeout(() => $("modalSearch")?.focus(), 0);
+      }
+
+      function closeFullEditor() {
+        const modal = $("fullEditorModal");
+        if (!modal) return;
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("modalOpen");
+        modalSourceTextareaId = null;
+        modalUndoStack = [];
+        updateUndoButton();
+      }
+
+      function normalizeForSearch(s) {
+        return String(s || "").toLowerCase();
+      }
+
+      function renderModalList() {
+        const listEl = $("modalList");
+        if (!listEl) return;
+
+        const q = normalizeForSearch($("modalSearch")?.value);
+
+        const rows = [];
+        for (let i = 0; i < modalItems.length; i++) {
+          const value = String(modalItems[i] ?? "");
+          if (q && !normalizeForSearch(value).includes(q)) continue;
+
+          rows.push(`
+            <div class="listRow" data-idx="${i}">
+              <div class="listIdx">${i + 1}</div>
+              <input class="input mono listInput" type="text" value="${escapeHtml(
+                value
+              )}" />
+              <button class="btn btn--ghost btn--xs listDel" type="button" title="Löschen">🗑</button>
+            </div>
+          `);
+        }
+
+        listEl.innerHTML =
+          rows.join("") ||
+          `<div class="muted small">Keine Treffer.</div>`;
+
+        updateUndoButton();
+      }
+
+      // -----------------------------
+      // Array Vergleich (Intersection)
+      // -----------------------------
+      const COMPARE_SOURCES = [
+        { id: "kidsHard", label: "Kids Hard Words" },
+        { id: "addictionHard", label: "Addiction Hard Words" },
+        { id: "combatSports", label: "Combat Sports Words" },
+        { id: "deutschArray", label: "Deutsch Wörter (deutschArray)" },
+      ];
+
+      function setCompareMeta(text) {
+        const el = $("compareMeta");
+        if (el) el.textContent = text;
+      }
+
+      function renderCompareList(items) {
+        const el = $("compareList");
+        if (!el) return;
+        if (!items || !items.length) {
+          el.textContent = "— (keine Treffer)";
+          return;
+        }
+        el.innerHTML = items
+          .map(
+            (x) => `
+          <div class="compareItem">
+            <div class="compareWord">${escapeHtml(x.word)}</div>
+          </div>`
+          )
+          .join("");
+      }
+
+      function effectiveArrayById(id) {
+        // Nimmt die *aktuelle* Einstellung aus der UI:
+        // - wenn UseDefault an => Default Array
+        // - sonst => Custom aus Textarea
+        if (id === "kidsHard") {
+          const useDefault = Boolean($("kidsHardPhrasesUseDefault")?.checked);
+          return useDefault
+            ? DEFAULT_PHRASES.kidsHard
+            : phrasesTextToArray($("kidsHardPhrasesText")?.value);
+        }
+        if (id === "addictionHard") {
+          const useDefault = Boolean(
+            $("addictionHardPhrasesUseDefault")?.checked
+          );
+          return useDefault
+            ? DEFAULT_PHRASES.addictionHard
+            : phrasesTextToArray($("addictionHardPhrasesText")?.value);
+        }
+        if (id === "combatSports") {
+          const useDefault = Boolean(
+            $("combatSportsPhrasesUseDefault")?.checked
+          );
+          return useDefault
+            ? DEFAULT_PHRASES.combatSports
+            : phrasesTextToArray($("combatSportsPhrasesText")?.value);
+        }
+        if (id === "deutschArray") {
+          const useDefault = Boolean($("deutschArrayUseDefault")?.checked);
+          return useDefault
+            ? DEFAULT_DEUTSCH_ARRAY
+            : phrasesTextToArray($("deutschArrayText")?.value);
+        }
+        return [];
+      }
+
+      function buildFreqMap(arr) {
+        const a = Array.isArray(arr) ? arr : [];
+        const freq = new Map(); // lower -> { original, count }
+        for (const x of a) {
+          const v = String(x || "").trim();
+          if (!v) continue;
+          const k = v.toLowerCase();
+          const cur = freq.get(k);
+          if (!cur) freq.set(k, { original: v, count: 1 });
+          else freq.set(k, { original: cur.original, count: cur.count + 1 });
+        }
+        return freq;
+      }
+
+      function tokenizeWordsFromLines(arr) {
+        const a = Array.isArray(arr) ? arr : [];
+        const freq = new Map(); // tokenLower -> { word, count }
+        for (const line of a) {
+          const s = String(line || "").toLowerCase();
+          if (!s) continue;
+          // split on non letters/numbers (unicode)
+          const parts = s.split(/[^\p{L}\p{N}]+/gu).filter(Boolean);
+          // count each token at most once per line (reduces spam)
+          const perLine = new Set(parts.filter((p) => p.length >= 2));
+          for (const tok of perLine) {
+            const cur = freq.get(tok);
+            if (!cur) freq.set(tok, { word: tok, count: 1 });
+            else freq.set(tok, { word: cur.word, count: cur.count + 1 });
+          }
+        }
+        return freq;
+      }
+
+      function intersectionWithCounts(arrA, arrB) {
+        const freqA = buildFreqMap(arrA);
+        const freqB = buildFreqMap(arrB);
+        const out = [];
+
+        for (const [k, aInfo] of freqA.entries()) {
+          const bInfo = freqB.get(k);
+          if (!bInfo) continue;
+          out.push({
+            key: k,
+            word: aInfo.original,
+            countA: aInfo.count,
+            countB: bInfo.count,
+          });
+        }
+
+        out.sort((x, y) => x.word.localeCompare(y.word, "de"));
+        return out;
+      }
+
+      function tokenIntersectionWithCounts(arrA, arrB) {
+        const freqA = tokenizeWordsFromLines(arrA);
+        const freqB = tokenizeWordsFromLines(arrB);
+        const out = [];
+        for (const [k, aInfo] of freqA.entries()) {
+          const bInfo = freqB.get(k);
+          if (!bInfo) continue;
+          out.push({
+            key: k,
+            word: aInfo.word,
+            countA: aInfo.count,
+            countB: bInfo.count,
+          });
+        }
+        out.sort((x, y) => x.word.localeCompare(y.word, "de"));
+        return out;
+      }
+
+      function compareOptionsHtml() {
+        return COMPARE_SOURCES.map(
+          (s) => `<option value="${s.id}">${escapeHtml(s.label)}</option>`
+        ).join("");
+      }
+
+      function renderCompareSelectList(ids = null) {
+        const wrap = $("compareSelectList");
+        if (!wrap) return;
+        const current = Array.from(wrap.querySelectorAll("select.compareSel")).map(
+          (s) => String(s.value || "").trim()
+        );
+        const finalIds =
+          Array.isArray(ids) && ids.length
+            ? ids
+            : current.length
+            ? current
+            : ["kidsHard", "combatSports"];
+        const opts = compareOptionsHtml();
+        wrap.innerHTML = finalIds
+          .map((id, idx) => {
+            const canRemove = idx >= 2;
+            return `
+              <div class="compareSelRow">
+                <select class="input compareSel">${opts}</select>
+                ${
+                  canRemove
+                    ? `<button class="btn btn--ghost btn--xs compareRemove" type="button" title="Entfernen">✕</button>`
+                    : `<span class="muted small" style="padding:0 8px;">&nbsp;</span>`
+                }
+              </div>
+            `;
+          })
+          .join("");
+        // set values after render
+        const sels = Array.from(wrap.querySelectorAll("select.compareSel"));
+        for (let i = 0; i < sels.length; i++) {
+          sels[i].value = finalIds[i] || COMPARE_SOURCES[0].id;
+        }
+      }
+
+      function getCompareSelectedIds() {
+        const wrap = $("compareSelectList");
+        if (!wrap) return [];
+        return Array.from(wrap.querySelectorAll("select.compareSel"))
+          .map((s) => String(s.value || "").trim())
+          .filter(Boolean);
+      }
+
+      function uniqueIds(ids) {
+        const out = [];
+        const seen = new Set();
+        for (const id of ids) {
+          const v = String(id || "").trim();
+          if (!v) continue;
+          if (seen.has(v)) continue;
+          seen.add(v);
+          out.push(v);
+        }
+        return out;
+      }
+
+      function intersectionExactAcross(ids) {
+        // ids: array of source ids, intersection of exact lines (case-insensitive)
+        if (!ids || ids.length < 2) return [];
+        const maps = ids.map((id) => buildFreqMap(effectiveArrayById(id)));
+        // start from first map keys
+        const out = [];
+        for (const [k, info] of maps[0].entries()) {
+          let ok = true;
+          const counts = [];
+          counts.push(info.count);
+          for (let i = 1; i < maps.length; i++) {
+            const x = maps[i].get(k);
+            if (!x) {
+              ok = false;
+              break;
+            }
+            counts.push(x.count);
+          }
+          if (!ok) continue;
+          out.push({
+            key: k,
+            word: info.original,
+            counts,
+          });
+        }
+        out.sort((x, y) => x.word.localeCompare(y.word, "de"));
+        return out;
+      }
+
+      function intersectionTokensAcross(ids) {
+        if (!ids || ids.length < 2) return [];
+        const maps = ids.map((id) =>
+          tokenizeWordsFromLines(effectiveArrayById(id))
+        );
+        const out = [];
+        for (const [k, info] of maps[0].entries()) {
+          let ok = true;
+          for (let i = 1; i < maps.length; i++) {
+            if (!maps[i].has(k)) {
+              ok = false;
+              break;
+            }
+          }
+          if (!ok) continue;
+          out.push({ key: k, word: info.word });
+        }
+        out.sort((x, y) => x.word.localeCompare(y.word, "de"));
+        return out;
+      }
+
+      function runCompare() {
+        const ids = uniqueIds(getCompareSelectedIds());
+        if (ids.length < 2) return;
+
+        const tokenize = Boolean($("compareTokenize")?.checked);
+        const inter = tokenize
+          ? intersectionTokensAcross(ids)
+          : intersectionExactAcross(ids);
+
+        setCompareMeta(`Anzahl Arrays: ${ids.length} • Gemeinsam: ${inter.length}`);
+
+        renderCompareList(inter);
       }
 
       function getCodeFilterOrderFromDom() {
@@ -821,24 +1802,67 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
         const kidsTa = $("kidsHardPhrasesText");
         const addTa = $("addictionHardPhrasesText");
         const combatTa = $("combatSportsPhrasesText");
+        const deutschTa = $("deutschArrayText");
+        const deutschUseDefault = Boolean($("deutschArrayUseDefault")?.checked);
 
         if (kidsTa) {
           kidsTa.disabled = kidsUseDefault;
           if (kidsUseDefault)
             kidsTa.value = phrasesArrayToText(DEFAULT_PHRASES.kidsHard);
+          else if (
+            String(kidsTa.value || "").trim() === "" &&
+            Array.isArray(CUSTOM_LIST_CACHE.kidsHard) &&
+            CUSTOM_LIST_CACHE.kidsHard.length
+          )
+            kidsTa.value = phrasesArrayToText(CUSTOM_LIST_CACHE.kidsHard);
         }
         if (addTa) {
           addTa.disabled = addUseDefault;
           if (addUseDefault)
             addTa.value = phrasesArrayToText(DEFAULT_PHRASES.addictionHard);
+          else if (
+            String(addTa.value || "").trim() === "" &&
+            Array.isArray(CUSTOM_LIST_CACHE.addictionHard) &&
+            CUSTOM_LIST_CACHE.addictionHard.length
+          )
+            addTa.value = phrasesArrayToText(CUSTOM_LIST_CACHE.addictionHard);
         }
         if (combatTa) {
           combatTa.disabled = combatUseDefault;
           if (combatUseDefault)
             combatTa.value = phrasesArrayToText(DEFAULT_PHRASES.combatSports);
+          else if (
+            String(combatTa.value || "").trim() === "" &&
+            Array.isArray(CUSTOM_LIST_CACHE.combatSports) &&
+            CUSTOM_LIST_CACHE.combatSports.length
+          )
+            combatTa.value = phrasesArrayToText(CUSTOM_LIST_CACHE.combatSports);
+        }
+
+        if (deutschTa) {
+          deutschTa.disabled = deutschUseDefault;
+          if (deutschUseDefault)
+            deutschTa.value = phrasesArrayToText(DEFAULT_DEUTSCH_ARRAY);
+          else if (
+            String(deutschTa.value || "").trim() === "" &&
+            Array.isArray(CUSTOM_LIST_CACHE.deutschArray) &&
+            CUSTOM_LIST_CACHE.deutschArray.length
+          )
+            deutschTa.value = phrasesArrayToText(
+              CUSTOM_LIST_CACHE.deutschArray
+            );
         }
 
         updateCodeFilterCounts();
+        if ($("count_deutschArray")) {
+          const arr = deutschUseDefault
+            ? DEFAULT_DEUTSCH_ARRAY
+            : phrasesTextToArray(deutschTa?.value);
+          $("count_deutschArray").textContent = `${arr.length} Wörter`;
+        }
+
+        // Bei programmatic value-changes (Default/Toggle/Reset) -> Index immer refreshen
+        refreshAllLineNumbers();
       }
 
       function attachDragReorder() {
@@ -847,7 +1871,24 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
 
         let dragEl = null;
 
+        // Jump buttons: direkt zum jeweiligen Editor scrollen
+        list.addEventListener("click", (e) => {
+          const btn = e.target?.closest?.("button[data-jump]");
+          if (!btn) return;
+          e.preventDefault();
+          e.stopPropagation();
+
+          const targetId = String(btn.getAttribute("data-jump") || "").trim();
+          if (!targetId) return;
+          const target = document.getElementById(targetId);
+          if (!target) return;
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+          setStatus("Status: nicht gespeichert");
+        });
+
         list.addEventListener("dragstart", (e) => {
+          // Interaktionen mit Inputs/Buttons sollen NICHT drag starten
+          if (e.target?.closest?.("input,button,select,textarea,label")) return;
           const li = e.target?.closest?.(".dragItem");
           if (!li) return;
           dragEl = li;
@@ -946,6 +1987,9 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
           combatSportsPhrases: phrasesTextToArray(
             $("combatSportsPhrasesText")?.value
           ),
+
+          deutschArrayUseDefault: Boolean($("deutschArrayUseDefault")?.checked),
+          deutschArray: phrasesTextToArray($("deutschArrayText")?.value),
         };
       }
 
@@ -963,6 +2007,16 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
           obj.addictionHardDistinctThreshold;
         $("combatSportsDistinctThreshold").value =
           obj.combatSportsDistinctThreshold;
+
+        // Mini Thresholds (in Code Filter Order List)
+        if ($("mini_kidsHardDistinctThreshold"))
+          $("mini_kidsHardDistinctThreshold").value = obj.kidsHardDistinctThreshold;
+        if ($("mini_addictionHardDistinctThreshold"))
+          $("mini_addictionHardDistinctThreshold").value =
+            obj.addictionHardDistinctThreshold;
+        if ($("mini_combatSportsDistinctThreshold"))
+          $("mini_combatSportsDistinctThreshold").value =
+            obj.combatSportsDistinctThreshold;
 
         $("writeDeletedChannels").checked = obj.writeDeletedChannels;
         $("dryRun").checked = obj.dryRun;
@@ -1031,6 +2085,35 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
             : DEFAULT_PHRASES.combatSports
         );
 
+        // Deutsch Array
+        if ($("deutschArrayUseDefault")) {
+          $("deutschArrayUseDefault").checked =
+            obj.deutschArrayUseDefault !== false;
+        }
+        if ($("deutschArrayText")) {
+          $("deutschArrayText").value = phrasesArrayToText(
+            Array.isArray(obj.deutschArray) && obj.deutschArray.length
+              ? obj.deutschArray
+              : DEFAULT_DEUTSCH_ARRAY
+          );
+        }
+
+        // Cache aus gespeicherten Optionen befüllen (damit Custom nach Toggle wiederkommt)
+        CUSTOM_LIST_CACHE.kidsHard = Array.isArray(obj.kidsHardPhrases)
+          ? obj.kidsHardPhrases
+          : [];
+        CUSTOM_LIST_CACHE.addictionHard = Array.isArray(
+          obj.addictionHardPhrases
+        )
+          ? obj.addictionHardPhrases
+          : [];
+        CUSTOM_LIST_CACHE.combatSports = Array.isArray(obj.combatSportsPhrases)
+          ? obj.combatSportsPhrases
+          : [];
+        CUSTOM_LIST_CACHE.deutschArray = Array.isArray(obj.deutschArray)
+          ? obj.deutschArray
+          : [];
+
         applyUseDefaultState();
       }
 
@@ -1064,6 +2147,8 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
           "addictionHardPhrasesText",
           "combatSportsPhrasesUseDefault",
           "combatSportsPhrasesText",
+          "deutschArrayUseDefault",
+          "deutschArrayText",
         ];
 
         for (const id of ids) {
@@ -1137,15 +2222,495 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
         setStatus("Status: nicht gespeichert");
       });
 
-      // Use-default toggles
-      $("kidsHardPhrasesUseDefault").addEventListener("change", () => {
+      // Deutsch Array Default Button
+      $("btnResetDeutschArray").addEventListener("click", () => {
+        $("deutschArrayUseDefault").checked = true;
+        $("deutschArrayText").value = phrasesArrayToText(DEFAULT_DEUTSCH_ARRAY);
         applyUseDefaultState();
+        const current = readForm();
+        renderPreview(current);
+        setStatus("Status: nicht gespeichert");
       });
-      $("addictionHardPhrasesUseDefault").addEventListener("change", () => {
-        applyUseDefaultState();
+
+      // Use-default toggles (merken Custom Text und stellen ihn beim Uncheck wieder her)
+      function handleUseDefaultToggle({ checkboxId, textareaId, cacheKey }) {
+        const cb = $(checkboxId);
+        const ta = $(textareaId);
+        if (!cb || !ta) return;
+
+        cb.addEventListener("change", () => {
+          if (cb.checked) {
+            // bevor Default die Textarea überschreibt: Custom sichern
+            CUSTOM_LIST_CACHE[cacheKey] = phrasesTextToArray(ta.value);
+          } else {
+            // zurück zu Custom: Custom aus Cache wiederherstellen (falls vorhanden)
+            const cached = CUSTOM_LIST_CACHE[cacheKey];
+            if (Array.isArray(cached) && cached.length) {
+              ta.value = phrasesArrayToText(cached);
+            }
+          }
+
+          applyUseDefaultState();
+          const current = readForm();
+          renderPreview(current);
+          setStatus("Status: nicht gespeichert");
+        });
+      }
+
+      handleUseDefaultToggle({
+        checkboxId: "kidsHardPhrasesUseDefault",
+        textareaId: "kidsHardPhrasesText",
+        cacheKey: "kidsHard",
       });
-      $("combatSportsPhrasesUseDefault").addEventListener("change", () => {
+      handleUseDefaultToggle({
+        checkboxId: "addictionHardPhrasesUseDefault",
+        textareaId: "addictionHardPhrasesText",
+        cacheKey: "addictionHard",
+      });
+      handleUseDefaultToggle({
+        checkboxId: "combatSportsPhrasesUseDefault",
+        textareaId: "combatSportsPhrasesText",
+        cacheKey: "combatSports",
+      });
+      handleUseDefaultToggle({
+        checkboxId: "deutschArrayUseDefault",
+        textareaId: "deutschArrayText",
+        cacheKey: "deutschArray",
+      });
+
+      // Fester Index links (nicht editierbar)
+      attachLineNumbers(
+        "kidsHardPhrasesText",
+        "ln_kidsHard",
+        "kidsHardPhrasesUseDefault"
+      );
+      attachLineNumbers(
+        "addictionHardPhrasesText",
+        "ln_addictionHard",
+        "addictionHardPhrasesUseDefault"
+      );
+      attachLineNumbers(
+        "combatSportsPhrasesText",
+        "ln_combatSports",
+        "combatSportsPhrasesUseDefault"
+      );
+      attachLineNumbers(
+        "deutschArrayText",
+        "ln_deutschArray",
+        "deutschArrayUseDefault"
+      );
+
+      // Mini Threshold Inputs -> sync in echtes Threshold Feld
+      function syncMiniThreshold(miniId, realId) {
+        const mini = $(miniId);
+        const real = $(realId);
+        if (!mini || !real) return;
+        mini.addEventListener("input", () => {
+          real.value = mini.value;
+          const current = readForm();
+          renderPreview(current);
+          setStatus("Status: nicht gespeichert");
+        });
+        mini.addEventListener("change", () => {
+          real.value = mini.value;
+          const current = readForm();
+          renderPreview(current);
+          setStatus("Status: nicht gespeichert");
+        });
+      }
+      syncMiniThreshold(
+        "mini_kidsHardDistinctThreshold",
+        "kidsHardDistinctThreshold"
+      );
+      syncMiniThreshold(
+        "mini_addictionHardDistinctThreshold",
+        "addictionHardDistinctThreshold"
+      );
+      syncMiniThreshold(
+        "mini_combatSportsDistinctThreshold",
+        "combatSportsDistinctThreshold"
+      );
+
+      // Vollbild: Buttons + Modal Controls
+      document.addEventListener("click", (e) => {
+        const closeBtn = e.target?.closest?.("[data-modal-close]");
+        if (closeBtn) {
+          closeFullEditor();
+          return;
+        }
+
+        const fsBtn = e.target?.closest?.("button[data-fullscreen-editor]");
+        if (fsBtn) {
+          const textareaId = String(
+            fsBtn.getAttribute("data-fullscreen-editor") || ""
+          ).trim();
+          const title = String(
+            fsBtn.getAttribute("data-fullscreen-title") || ""
+          ).trim();
+          if (textareaId) openFullEditor({ textareaId, title });
+          return;
+        }
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeFullEditor();
+      });
+
+      $("btnModalApply")?.addEventListener("click", () => {
+        if (!modalSourceTextareaId) return;
+        const src = $(modalSourceTextareaId);
+        if (!src || src.disabled) return;
+
+        // cleanup: trim, drop empty, unique (case-insensitive), preserve order
+        const cleanedArr = [];
+        const seen = new Set();
+        for (const raw of modalItems) {
+          const v = String(raw || "").trim();
+          if (!v) continue;
+          const k = v.toLowerCase();
+          if (seen.has(k)) continue;
+          seen.add(k);
+          cleanedArr.push(v);
+        }
+        src.value = cleanedArr.join("\n");
+
         applyUseDefaultState();
+        const current = readForm();
+        renderPreview(current);
+        setStatus("Status: nicht gespeichert");
+
+        closeFullEditor();
+      });
+
+      // Modal search + add + per-row edit/delete (Event Delegation)
+      $("modalSearch")?.addEventListener("input", () => {
+        renderModalList();
+      });
+
+      $("btnModalAdd")?.addEventListener("click", () => {
+        modalItems.push("");
+        renderModalList();
+        // focus newly added row input (last visible if no filter)
+        setTimeout(() => {
+          const list = $("modalList");
+          const last = list?.querySelector?.(".listRow:last-child .listInput");
+          last?.focus?.();
+        }, 0);
+      });
+
+      $("btnModalUndo")?.addEventListener("click", () => {
+        const last = modalUndoStack.pop();
+        if (!last) {
+          updateUndoButton();
+          return;
+        }
+        const idx = Math.max(0, Math.min(modalItems.length, Number(last.idx) || 0));
+        modalItems.splice(idx, 0, last.value);
+        renderModalList();
+      });
+
+      $("modalList")?.addEventListener("input", (e) => {
+        const row = e.target?.closest?.(".listRow");
+        const input = e.target?.closest?.(".listInput");
+        if (!row || !input) return;
+        const idx = Number(row.getAttribute("data-idx"));
+        if (!Number.isFinite(idx) || idx < 0 || idx >= modalItems.length) return;
+        modalItems[idx] = input.value;
+      });
+
+      $("modalList")?.addEventListener("click", (e) => {
+        const btn = e.target?.closest?.(".listDel");
+        if (!btn) return;
+        const row = btn.closest(".listRow");
+        const idx = Number(row?.getAttribute("data-idx"));
+        if (!Number.isFinite(idx) || idx < 0 || idx >= modalItems.length) return;
+        const [deleted] = modalItems.splice(idx, 1);
+        modalUndoStack.push({ idx, value: String(deleted ?? "") });
+        renderModalList(); // Nummern rutschen automatisch nach
+      });
+
+      // Array Vergleich
+      renderCompareSelectList();
+      $("btnCompare")?.addEventListener("click", () => runCompare());
+      $("compareTokenize")?.addEventListener("change", () => runCompare());
+      function openCompareAddPrompt() {
+        const modal = $("compareAddPrompt");
+        const sel = $("compareAddSelect");
+        if (!modal || !sel) return;
+        const ids = uniqueIds(getCompareSelectedIds());
+        const all = COMPARE_SOURCES.map((s) => s.id);
+        const unused = all.filter((id) => !ids.includes(id));
+        if (!unused.length) {
+          setCompareMeta("Alle verfügbaren Wortsammlungen sind bereits hinzugefügt");
+          return;
+        }
+        sel.innerHTML = unused
+          .map((id) => {
+            const label = escapeHtml(labelForCompareId(id));
+            return `<option value="${escapeHtml(id)}">${label}</option>`;
+          })
+          .join("");
+        modal.classList.remove("hidden");
+        modal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("modalOpen");
+      }
+
+      function closeCompareAddPrompt() {
+        const modal = $("compareAddPrompt");
+        if (!modal) return;
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("modalOpen");
+      }
+
+      $("btnCompareAdd")?.addEventListener("click", () => openCompareAddPrompt());
+      $("btnCompareAddApply")?.addEventListener("click", () => {
+        const sel = $("compareAddSelect");
+        if (!sel) return;
+        const chosen = String(sel.value || "").trim();
+        if (!chosen) return;
+        const ids = uniqueIds(getCompareSelectedIds());
+        ids.push(chosen);
+        renderCompareSelectList(ids);
+        runCompare();
+        closeCompareAddPrompt();
+      });
+
+      $("compareSelectList")?.addEventListener("change", () => runCompare());
+      $("compareSelectList")?.addEventListener("click", (e) => {
+        const btn = e.target?.closest?.(".compareRemove");
+        if (!btn) return;
+        const row = btn.closest(".compareSelRow");
+        const wrap = $("compareSelectList");
+        if (!row || !wrap) return;
+        row.remove();
+        runCompare();
+      });
+
+      // Compare add prompt close
+      document.addEventListener("click", (e) => {
+        if (e.target?.closest?.("[data-compare-add-close]")) closeCompareAddPrompt();
+      });
+
+      // ----------------------------------------------------------
+      // Compare Modal (Intersection bearbeiten)
+      // ----------------------------------------------------------
+      let compareState = {
+        ids: [],
+        inter: [], // [{word,countA,countB}]
+      };
+      let comparePendingDelete = null; // { wordLower, wordDisplay }
+
+      function labelForCompareId(id) {
+        return COMPARE_SOURCES.find((x) => x.id === id)?.label || id;
+      }
+
+      function openCompareModal() {
+        const modal = $("compareModal");
+        if (!modal) return;
+        compareState.ids = uniqueIds(getCompareSelectedIds());
+        if (compareState.ids.length < 2) return;
+
+        const tokenize = Boolean($("compareTokenize")?.checked);
+        compareState.inter = tokenize
+          ? intersectionTokensAcross(compareState.ids)
+          : intersectionExactAcross(compareState.ids);
+
+        $("compareModalTitle").textContent = `Array Vergleich (${compareState.ids.length} Arrays)`;
+        if ($("compareModalSearch")) $("compareModalSearch").value = "";
+
+        renderCompareModalList();
+
+        modal.classList.remove("hidden");
+        modal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("modalOpen");
+        setTimeout(() => $("compareModalSearch")?.focus(), 0);
+      }
+
+      function closeCompareModal() {
+        const modal = $("compareModal");
+        if (!modal) return;
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("modalOpen");
+      }
+
+      function renderCompareModalList() {
+        const listEl = $("compareModalList");
+        if (!listEl) return;
+        const q = String($("compareModalSearch")?.value || "").toLowerCase().trim();
+        const tokenize = Boolean($("compareTokenize")?.checked);
+        const rows = [];
+        let shownIdx = 0;
+        for (const x of compareState.inter) {
+          const w = String(x.word || "");
+          if (q && !w.toLowerCase().includes(q)) continue;
+          shownIdx++;
+          const canDelete = !tokenize;
+          rows.push(`
+            <div class="compareModalRow">
+              <div class="compareModalIdx">${shownIdx}</div>
+              <div class="compareModalWord">${escapeHtml(w)}</div>
+              ${
+                canDelete
+                  ? `<button class="btn btn--ghost btn--xs listDel" type="button" data-compare-del="${escapeHtml(
+                      w
+                    )}" title="Löschen">🗑</button>`
+                  : `<span class="muted small" title="Im Token-Modus ist Löschen aus Arrays nicht eindeutig.">—</span>`
+              }
+            </div>
+          `);
+        }
+        const hint = tokenize
+          ? `<div class="warnBox" style="margin-bottom:10px;">
+               <b>Hinweis:</b> Du bist im <b>Wörter/Token</b>-Modus. Hier ist die Liste nur zum Finden/Abgleichen.
+               Löschen aus den Original-Arrays ist hier deaktiviert (sonst wäre es mehrdeutig).
+             </div>`
+          : "";
+        listEl.innerHTML =
+          hint + (rows.join("") || `<div class="muted small">Keine Treffer.</div>`);
+      }
+
+      function getArrayConfigById(id) {
+        if (id === "kidsHard") {
+          return {
+            useDefaultEl: $("kidsHardPhrasesUseDefault"),
+            textareaEl: $("kidsHardPhrasesText"),
+            defaults: DEFAULT_PHRASES.kidsHard,
+          };
+        }
+        if (id === "addictionHard") {
+          return {
+            useDefaultEl: $("addictionHardPhrasesUseDefault"),
+            textareaEl: $("addictionHardPhrasesText"),
+            defaults: DEFAULT_PHRASES.addictionHard,
+          };
+        }
+        if (id === "combatSports") {
+          return {
+            useDefaultEl: $("combatSportsPhrasesUseDefault"),
+            textareaEl: $("combatSportsPhrasesText"),
+            defaults: DEFAULT_PHRASES.combatSports,
+          };
+        }
+        if (id === "deutschArray") {
+          return {
+            useDefaultEl: $("deutschArrayUseDefault"),
+            textareaEl: $("deutschArrayText"),
+            defaults: DEFAULT_DEUTSCH_ARRAY,
+          };
+        }
+        return null;
+      }
+
+      function removeWordFromArrayId({ id, wordLower }) {
+        const cfg = getArrayConfigById(id);
+        if (!cfg?.useDefaultEl || !cfg?.textareaEl) return;
+
+        // Ensure editable: if default was active, switch to custom and start from defaults
+        const wasDefault = cfg.useDefaultEl.checked === true;
+        const base = wasDefault ? cfg.defaults : phrasesTextToArray(cfg.textareaEl.value);
+
+        const out = [];
+        for (const x of base) {
+          const v = String(x || "").trim();
+          if (!v) continue;
+          if (v.toLowerCase() === wordLower) continue; // remove ALL occurrences of that word (case-insensitive)
+          out.push(v);
+        }
+
+        cfg.useDefaultEl.checked = false;
+        cfg.textareaEl.disabled = false;
+        cfg.textareaEl.value = phrasesArrayToText(out);
+      }
+
+      function openCompareDeletePrompt(word) {
+        const prompt = $("compareDeletePrompt");
+        if (!prompt) return;
+        const w = String(word || "").trim();
+        if (!w) return;
+        comparePendingDelete = { wordLower: w.toLowerCase(), wordDisplay: w };
+
+        const tokenize = Boolean($("compareTokenize")?.checked);
+        if (tokenize) return; // should not happen (no delete buttons)
+
+        $("comparePromptText").textContent = `„${w}“ löschen – aus welchen Arrays soll es entfernt werden?`;
+
+        const box = $("compareDelOptions");
+        if (box) {
+          box.innerHTML = compareState.ids
+            .map((id) => {
+              const label = escapeHtml(labelForCompareId(id));
+              return `
+                <label class="toggle" style="display:flex; gap:10px; align-items:center; margin-top:8px;">
+                  <input class="compareDelOpt" type="checkbox" value="${escapeHtml(
+                    id
+                  )}" checked />
+                  <span>Aus ${label} löschen</span>
+                </label>
+              `;
+            })
+            .join("");
+        }
+
+        prompt.classList.remove("hidden");
+        prompt.setAttribute("aria-hidden", "false");
+        document.body.classList.add("modalOpen");
+      }
+
+      function closeCompareDeletePrompt() {
+        const prompt = $("compareDeletePrompt");
+        if (!prompt) return;
+        prompt.classList.add("hidden");
+        prompt.setAttribute("aria-hidden", "true");
+        comparePendingDelete = null;
+      }
+
+      $("btnCompareFullscreen")?.addEventListener("click", () => openCompareModal());
+      $("compareModalSearch")?.addEventListener("input", () => renderCompareModalList());
+
+      // Compare modal close
+      document.addEventListener("click", (e) => {
+        if (e.target?.closest?.("[data-compare-close]")) closeCompareModal();
+        if (e.target?.closest?.("[data-compare-prompt-close]")) closeCompareDeletePrompt();
+
+        const del = e.target?.closest?.("[data-compare-del]");
+        if (del) {
+          const word = del.getAttribute("data-compare-del");
+          openCompareDeletePrompt(word);
+        }
+      });
+
+      $("btnCompareDelApply")?.addEventListener("click", () => {
+        if (!comparePendingDelete) return;
+        const opts = Array.from(
+          document.querySelectorAll("#compareDelOptions .compareDelOpt")
+        );
+        const chosen = opts
+          .filter((x) => x.checked)
+          .map((x) => String(x.value || "").trim())
+          .filter(Boolean);
+        if (!chosen.length) return;
+
+        for (const id of chosen) {
+          removeWordFromArrayId({
+            id,
+            wordLower: comparePendingDelete.wordLower,
+          });
+        }
+
+        // Refresh UI + compare results
+        applyUseDefaultState();
+        const current = readForm();
+        renderPreview(current);
+        setStatus("Status: nicht gespeichert");
+
+        runCompare(); // updates compareList on page
+        // refresh modal state (exact mode)
+        compareState.inter = intersectionExactAcross(compareState.ids);
+        renderCompareModalList();
+
+        closeCompareDeletePrompt();
       });
 
       // INIT
@@ -1176,6 +2741,17 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
           // ignore -> UI kann trotzdem arbeiten (ohne Defaults)
         }
 
+        // 1b) Default Deutsch Array vom Server holen
+        try {
+          const r = await fetch(DEUTSCH_ARRAY_URL, { cache: "no-store" });
+          const j = await r.json().catch(() => null);
+          if (r.ok && j?.ok && Array.isArray(j.words)) {
+            DEFAULT_DEUTSCH_ARRAY = j.words;
+          }
+        } catch {
+          // ignore
+        }
+
         const loaded = loadOptions();
         // Backwards compatible defaults
         if (!loaded.codeFilterOrder)
@@ -1188,6 +2764,8 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
           loaded.addictionHardPhrasesUseDefault = true;
         if (loaded.combatSportsPhrasesUseDefault === undefined)
           loaded.combatSportsPhrasesUseDefault = true;
+        if (loaded.deutschArrayUseDefault === undefined)
+          loaded.deutschArrayUseDefault = true;
 
         fillForm(loaded);
         renderPreview(loaded);
@@ -1195,6 +2773,149 @@ startJob("/process/ungefiltert-to-vorgefiltertCode", { ...saved, dryRun:false })
         attachLivePreview();
         attachDragReorder();
         updateCodeFilterCounts();
+        // Vergleich initial anzeigen
+        runCompare();
+
+        // Prompt manager init
+        try {
+          const store = await ensureDefaultPromptInStore();
+          renderPromptSelect(store);
+          const selected = getSelectedPrompt(store);
+          if ($("promptText")) $("promptText").value = selected?.text || "";
+          setPromptStatus(
+            store.activeId
+              ? `Aktiv: ${store.prompts.find((p) => p.id === store.activeId)?.name || "—"}`
+              : "Aktiv: —"
+          );
+
+          $("promptSelect")?.addEventListener("change", () => {
+            const s = loadAiPromptStore();
+            const p = getSelectedPrompt(s);
+            $("promptText").value = p?.text || "";
+            setPromptStatus(
+              s.activeId
+                ? `Aktiv: ${s.prompts.find((x) => x.id === s.activeId)?.name || "—"}`
+                : "Aktiv: —"
+            );
+          });
+
+          $("btnPromptSave")?.addEventListener("click", () => {
+            const s = loadAiPromptStore();
+            const p = getSelectedPrompt(s);
+            if (!p) return;
+            p.text = String($("promptText")?.value || "");
+            p.updatedAt = nowIso();
+            // write back
+            s.prompts = s.prompts.map((x) => (x.id === p.id ? p : x));
+            saveAiPromptStore(s);
+            renderPromptSelect(s, p.id);
+            setPromptStatus(
+              s.activeId
+                ? `Aktiv: ${s.prompts.find((x) => x.id === s.activeId)?.name || "—"}`
+                : "Aktiv: —"
+            );
+          });
+
+          $("btnPromptSetActive")?.addEventListener("click", () => {
+            const s = loadAiPromptStore();
+            const p = getSelectedPrompt(s);
+            if (!p) return;
+            // persist latest text too
+            p.text = String($("promptText")?.value || "");
+            p.updatedAt = nowIso();
+            s.prompts = s.prompts.map((x) => (x.id === p.id ? p : x));
+            s.activeId = p.id;
+            saveAiPromptStore(s);
+            renderPromptSelect(s, p.id);
+            setPromptStatus(`Aktiv: ${p.name}`);
+          });
+
+          $("btnPromptNew")?.addEventListener("click", () => {
+            const name = prompt("Name für neue Prompt-Version?", "Neu");
+            if (!name) return;
+            const s = loadAiPromptStore();
+            const id = uuid();
+            const p = {
+              id,
+              name: String(name).trim() || "Neu",
+              text: "",
+              updatedAt: nowIso(),
+            };
+            s.prompts = [p, ...s.prompts];
+            saveAiPromptStore(s);
+            renderPromptSelect(s, id);
+            $("promptText").value = "";
+          });
+
+          $("btnPromptDuplicate")?.addEventListener("click", () => {
+            const s = loadAiPromptStore();
+            const cur = getSelectedPrompt(s);
+            if (!cur) return;
+            const name = prompt("Name für Kopie?", `${cur.name} (Kopie)`);
+            if (!name) return;
+            const id = uuid();
+            const p = {
+              id,
+              name: String(name).trim() || `${cur.name} (Kopie)`,
+              text: String($("promptText")?.value || cur.text || ""),
+              updatedAt: nowIso(),
+            };
+            s.prompts = [p, ...s.prompts];
+            saveAiPromptStore(s);
+            renderPromptSelect(s, id);
+            $("promptText").value = p.text;
+          });
+
+          $("btnPromptRename")?.addEventListener("click", () => {
+            const s = loadAiPromptStore();
+            const cur = getSelectedPrompt(s);
+            if (!cur) return;
+            const name = prompt("Neuer Name?", cur.name);
+            if (!name) return;
+            cur.name = String(name).trim() || cur.name;
+            cur.updatedAt = nowIso();
+            s.prompts = s.prompts.map((x) => (x.id === cur.id ? cur : x));
+            saveAiPromptStore(s);
+            renderPromptSelect(s, cur.id);
+            setPromptStatus(
+              s.activeId
+                ? `Aktiv: ${s.prompts.find((x) => x.id === s.activeId)?.name || "—"}`
+                : "Aktiv: —"
+            );
+          });
+
+          $("btnPromptDelete")?.addEventListener("click", () => {
+            const s = loadAiPromptStore();
+            const cur = getSelectedPrompt(s);
+            if (!cur) return;
+            const ok = confirm(`Prompt-Version wirklich löschen?\n\n${cur.name}`);
+            if (!ok) return;
+            s.prompts = s.prompts.filter((x) => x.id !== cur.id);
+            if (s.activeId === cur.id) s.activeId = s.prompts[0]?.id || "";
+            saveAiPromptStore(s);
+            renderPromptSelect(s);
+            const p = getSelectedPrompt(s);
+            $("promptText").value = p?.text || "";
+            setPromptStatus(
+              s.activeId
+                ? `Aktiv: ${s.prompts.find((x) => x.id === s.activeId)?.name || "—"}`
+                : "Aktiv: —"
+            );
+          });
+
+          $("btnPromptLoadDefault")?.addEventListener("click", async () => {
+            try {
+              const txt = await loadServerDefaultPromptText();
+              $("promptText").value = txt;
+              setPromptStatus("Default geladen (noch nicht gespeichert)");
+            } catch (e) {
+              alert(String(e?.message || e));
+            }
+          });
+        } catch (e) {
+          // ignore prompt init errors
+          setPromptStatus("Prompt: Fehler");
+        }
       })();
     </script>
   </body>
