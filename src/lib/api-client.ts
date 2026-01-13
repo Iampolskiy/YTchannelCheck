@@ -20,6 +20,7 @@ export interface Stats {
   prefiltered: number;
   positive: number;
   negative: number;
+  rejectionReasons?: Record<string, number>;
 }
 
 export interface StatsResponse {

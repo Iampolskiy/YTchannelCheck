@@ -148,12 +148,16 @@ router.get(
   '/stats',
   async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const [unchecked, prefiltered, positive, negative, total] = await Promise.all([
+      const [unchecked, prefiltered, positive, negative, total, rejectionReasons] = await Promise.all([
         Channel.countDocuments({ status: 'unchecked' }),
         Channel.countDocuments({ status: 'prefiltered' }),
         Channel.countDocuments({ status: 'positive' }),
         Channel.countDocuments({ status: 'negative' }),
         Channel.countDocuments(),
+        Channel.aggregate([
+          { $match: { status: 'negative' } },
+          { $group: { _id: '$rejectionReason', count: { $sum: 1 } } }
+        ])
       ]);
 
       res.json({
@@ -164,6 +168,11 @@ router.get(
           positive,
           negative,
           total,
+          rejectionReasons: rejectionReasons.reduce((acc, curr) => {
+            const key = curr._id || 'Unknown';
+            acc[key] = curr.count;
+            return acc;
+          }, {} as Record<string, number>),
         },
       });
     } catch (error) {

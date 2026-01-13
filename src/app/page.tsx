@@ -12,6 +12,7 @@ import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { FiltrationConditions } from "@/components/filtration-conditions";
 import { AIConfiguration } from "@/components/ai-configuration";
+import { StatisticsView } from "@/components/statistics-view";
 import { Documentation } from "@/components/documentation";
 import { DatabaseManager } from "@/components/database-manager";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -49,6 +50,7 @@ export default function Home() {
             </div>
           </div>
           <div className="flex gap-2">
+             <StatisticsView />
              <DatabaseManager />
              <FiltrationConditions />
              <AIConfiguration />
