@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -49,6 +49,13 @@ export function DatabaseManager() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectAllMode, setSelectAllMode] = useState(false);
   const { mutate: mutateStats } = useStats();
+
+  // Listen for custom event to open this dialog
+  useEffect(() => {
+    const handleOpen = () => setOpen(true);
+    window.addEventListener('openDatabaseManager', handleOpen);
+    return () => window.removeEventListener('openDatabaseManager', handleOpen);
+  }, []);
 
   // Fetch channels with sorting, filtering, and pagination
   const { data, isLoading, mutate } = useSWR(

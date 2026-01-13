@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,6 +20,13 @@ import { Badge } from "@/components/ui/badge";
 
 export function Documentation() {
   const [open, setOpen] = useState(false);
+
+  // Listen for custom event to open this dialog
+  useEffect(() => {
+    const handleOpen = () => setOpen(true);
+    window.addEventListener('openDocumentation', handleOpen);
+    return () => window.removeEventListener('openDocumentation', handleOpen);
+  }, []);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

@@ -15,8 +15,7 @@ import { AIConfiguration } from "@/components/ai-configuration";
 import { StatisticsView } from "@/components/statistics-view";
 import { Documentation } from "@/components/documentation";
 import { DatabaseManager } from "@/components/database-manager";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { LanguageToggle } from "@/components/language-toggle";
+import { HeaderMenu } from "@/components/header-menu";
 import { useTranslations } from "next-intl";
 
 export default function Home() {
@@ -37,6 +36,15 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background font-sans">
+      {/* Hidden dialog components that respond to events */}
+      <div className="hidden">
+        <StatisticsView />
+        <DatabaseManager />
+        <FiltrationConditions />
+        <AIConfiguration />
+        <Documentation />
+      </div>
+
       {/* Header */}
       <header className="bg-card border-b border-border sticky top-0 z-50 shadow-sm">
         <div className="container py-4 flex items-center justify-between">
@@ -49,15 +57,7 @@ export default function Home() {
               <p className="text-xs text-muted-foreground font-medium">{t("header.subtitle")}</p>
             </div>
           </div>
-          <div className="flex gap-2">
-             <StatisticsView />
-             <DatabaseManager />
-             <FiltrationConditions />
-             <AIConfiguration />
-             <Documentation />
-             <ThemeToggle />
-             <LanguageToggle />
-          </div>
+          <HeaderMenu />
         </div>
       </header>
 

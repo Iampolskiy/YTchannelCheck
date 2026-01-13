@@ -287,6 +287,13 @@ export function FiltrationConditions() {
   // Default order: location, language, topics
   const [filterOrder, setFilterOrder] = useState(["location", "language", "topics"]);
 
+  // Listen for custom event to open this dialog
+  useEffect(() => {
+    const handleOpen = () => setOpen(true);
+    window.addEventListener('openFiltrationConditions', handleOpen);
+    return () => window.removeEventListener('openFiltrationConditions', handleOpen);
+  }, []);
+
   // Load settings from localStorage on mount
   useEffect(() => {
     const stored = localStorage.getItem("filterSettings");
