@@ -162,7 +162,11 @@ export function Documentation() {
                 <div className="border rounded-lg p-4">
                   <h4 className="font-semibold mb-2">AI Filter is failing?</h4>
                   <p className="text-sm text-muted-foreground">
-                    Ensure <strong>Ollama</strong> is running on your machine (<code>ollama serve</code>) and you have pulled the model (<code>ollama pull llama3:8b</code>).
+                    Ensure <strong>Ollama</strong> is running.
+                    <br />
+                    - <strong>Local:</strong> Run <code>ollama serve</code> and pull the model (<code>ollama pull llama3:8b</code>).
+                    <br />
+                    - <strong>Remote:</strong> Set <code>OLLAMA_HOST</code> in your environment if Ollama is on another machine.
                   </p>
                 </div>
               </div>

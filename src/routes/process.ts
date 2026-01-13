@@ -165,7 +165,13 @@ router.post(
           const pipelineOptions: AIFilterPipelineOptions = {
             model: options.ollama?.model || AI_CONFIG.ollama.defaultModel,
             batchSize: 5, // Smaller batch for AI
-            prompts: ['kids', 'gaming'], // Default checks
+            
+            // Pass custom prompts and master prompt
+            masterPrompt: options.masterPrompt,
+            customPrompts: options.prompts,
+            
+            // Default checks if no custom prompts provided
+            prompts: (!options.prompts || options.prompts.length === 0) ? ['kids', 'gaming'] : undefined,
             
             onProgress: (stats: AIStats) => {
               job.progress = stats;
@@ -307,7 +313,7 @@ router.get(
   '/jobs/:jobId',
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { jobId } = req.params;
+      const jobId = req.params.jobId as string;
       const job = jobs.get(jobId);
 
       if (!job) {
@@ -341,7 +347,7 @@ router.get(
 router.get(
   '/jobs/:jobId/stream',
   async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
-    const { jobId } = req.params;
+    const jobId = req.params.jobId as string;
     const job = jobs.get(jobId);
 
     res.writeHead(200, {

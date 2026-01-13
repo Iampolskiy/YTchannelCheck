@@ -64,24 +64,27 @@ const DEFAULT_SETTINGS = {
       allowedLanguages: "German, Deutsch, de",
       minGermanWords: 5,
     },
-    topics: {
-      enabled: true,
-      // Single list of keywords
-      keywords: "kinder, kids, baby, spielzeug, toys, cartoon, gaming, gameplay, let's play, zocken, minecraft, roblox, fortnite",
-      // Array of dynamic conditions: { minWords: number, maxChars: number }
-      // Start with 1 default condition
-      conditions: [{ minWords: 3, maxChars: 1000 }],
-      // Dynamic topic filter groups (optional advanced feature)
-      // If we wanted completely separate groups like the user asked ("add new Topic Filters (Negative) dynamically"),
-      // we'd need a structure like: groups: [{ name: "Kids", keywords: "...", conditions: [...] }]
-      // But the current request seemed to be about the *conditions* within the topic filter.
-      // If the user meant adding entirely NEW Topic Filter SECTIONS (e.g. "Gambling Filter", "Crypto Filter"),
-      // we would need to restructure the 'prefilter' object to be an array or dynamic map.
-      // Given the "Topic Filters (Negative)" header, I'll assume they want to add new *groups* of topic filters.
-    }
+    topicFilters: [
+      {
+        id: "default-topics",
+        name: "Topic Filters (Negative)",
+        enabled: true,
+        keywords: "kinder, kids, baby, spielzeug, toys, cartoon, gaming, gameplay, let's play, zocken, minecraft, roblox, fortnite",
+        conditions: [{ minWords: 3, maxChars: 1000 }]
+      }
+    ]
   },
   ai: {
     model: "llama3:8b",
+    masterPrompt: `You are an expert content moderator for a German advertising agency. 
+Your task is to analyze YouTube channel data to determine if it is suitable for a specific advertising campaign.
+You must be strict, objective, and ignore any personal bias.
+The output must be a valid JSON object with the following structure:
+{
+  "suitable": boolean,
+  "reason": "string (short explanation in German)"
+}
+Do not output any markdown formatting, just the raw JSON string.`,
     prompts: [
       {
         id: "kids",
@@ -261,13 +264,6 @@ export function FiltrationConditions() {
     if (id.startsWith('topic-') || id === 'default-topics') {
       const topicFilter = settings.prefilter.topicFilters?.find((t: any) => t.id === id);
       if (!topicFilter) return null; // Should not happen if state is consistent
-
-      const updateTopicFilter = (key: string, value: any) => {
-        const newFilters = settings.prefilter.topicFilters.map((t: any) => 
-          t.id === id ? { ...t, [key]: value } : t
-        );
-        updatePrefilter('topicFilters', null, newFilters); // special handling in updatePrefilter needed or just direct set
-      };
 
       // Helper since updatePrefilter logic was for simple keys. We'll update settings directly here.
       const handleTopicUpdate = (key: string, value: any) => {
@@ -604,11 +600,11 @@ export function FiltrationConditions() {
           </div>
           <DialogDescription>
             Configure the rules for Prefilter and AI analysis.
-            <div className="flex items-center gap-2 mt-2 text-primary font-medium text-xs bg-primary/5 p-2 rounded-md border border-primary/10">
-              <GripVertical className="h-3 w-3" />
-              <span>Drag sections to prioritize the order of checks</span>
-            </div>
           </DialogDescription>
+          <div className="flex items-center gap-2 mt-2 text-primary font-medium text-xs bg-primary/5 p-2 rounded-md border border-primary/10">
+            <GripVertical className="h-3 w-3" />
+            <span>Drag sections to prioritize the order of checks</span>
+          </div>
         </DialogHeader>
 
         <Tabs defaultValue="prefilter" className="w-full">
@@ -677,9 +673,72 @@ export function FiltrationConditions() {
               />
             </div>
 
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label>Master System Prompt (Fixed)</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-md">
+                      <p>This is the <strong>System Instruction</strong> sent to the AI. It defines the AI's role and the required output format (JSON). <br/><br/>
+                      <strong>Do not change the JSON structure instructions</strong> unless you update the backend parser too.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="relative">
+                <Textarea 
+                  value={settings.ai.masterPrompt}
+                  onChange={(e) => setSettings(prev => ({ ...prev, ai: { ...prev.ai, masterPrompt: e.target.value } }))}
+                  className="min-h-[150px] font-mono text-xs"
+                  placeholder={DEFAULT_SETTINGS.ai.masterPrompt}
+                />
+                {settings.ai.masterPrompt !== DEFAULT_SETTINGS.ai.masterPrompt && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute top-2 right-2 h-6 text-xs text-muted-foreground hover:text-primary"
+                    onClick={() => setSettings(prev => ({ ...prev, ai: { ...prev.ai, masterPrompt: DEFAULT_SETTINGS.ai.masterPrompt } }))}
+                  >
+                    Reset to Default
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This prompt is sent as the "System" message for every check. It defines the persona and output format.
+              </p>
+            </div>
+
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-base font-semibold">Prompts</Label>
+                <div className="flex items-center gap-2">
+                  <Label className="text-base font-semibold">Prompts (Variable)</Label>
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      {/* Using portal to break out of overflow:hidden containers */}
+                      <TooltipContent 
+                        className="max-w-xs bg-popover text-popover-foreground shadow-md border z-[9999]" 
+                        side="right" 
+                        align="start"
+                      >
+                        <div className="space-y-2 text-xs">
+                          <p>Specific questions for each check (e.g. "Is this for kids?").</p>
+                          <p className="font-semibold text-destructive">Required placeholders:</p>
+                          <ul className="list-disc pl-4 space-y-1 font-mono">
+                            <li>Title: &#123;title&#125;</li>
+                            <li>Description: &#123;description&#125;</li>
+                            <li>Latest Videos: &#123;videoTitles&#125;</li>
+                          </ul>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -693,43 +752,73 @@ export function FiltrationConditions() {
                 </Button>
               </div>
               
-              {settings.ai.prompts.map((prompt, idx) => (
-                <div key={idx} className="border rounded-lg p-4 space-y-3 relative group">
-                  <div className="flex items-center justify-between">
-                    <Input 
-                      value={prompt.name}
-                      onChange={(e) => {
-                        const newPrompts = [...settings.ai.prompts];
-                        newPrompts[idx] = { ...newPrompts[idx], name: e.target.value };
-                        setSettings(prev => ({ ...prev, ai: { ...prev.ai, prompts: newPrompts } }));
-                      }}
-                      className="font-medium border-none shadow-none p-0 h-auto focus-visible:ring-0 w-full max-w-[200px]"
-                    />
-                    
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => {
-                        const newPrompts = [...settings.ai.prompts];
-                        newPrompts.splice(idx, 1);
-                        setSettings(prev => ({ ...prev, ai: { ...prev.ai, prompts: newPrompts } }));
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+              <DndContext 
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(event) => {
+                  const { active, over } = event;
+                  if (active.id !== over?.id) {
+                    setSettings(prev => {
+                      const oldIndex = prev.ai.prompts.findIndex(p => p.id === active.id);
+                      const newIndex = prev.ai.prompts.findIndex(p => p.id === over?.id);
+                      return {
+                        ...prev,
+                        ai: {
+                          ...prev.ai,
+                          prompts: arrayMove(prev.ai.prompts, oldIndex, newIndex)
+                        }
+                      };
+                    });
+                  }
+                }}
+              >
+                <SortableContext 
+                  items={settings.ai.prompts.map(p => p.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-4">
+                    {settings.ai.prompts.map((prompt, idx) => (
+                      <SortableItem key={prompt.id} id={prompt.id}>
+                        <div className="border rounded-lg p-4 space-y-3 relative group">
+                          <div className="flex items-center justify-between">
+                            <Input 
+                              value={prompt.name}
+                              onChange={(e) => {
+                                const newPrompts = [...settings.ai.prompts];
+                                newPrompts[idx] = { ...newPrompts[idx], name: e.target.value };
+                                setSettings(prev => ({ ...prev, ai: { ...prev.ai, prompts: newPrompts } }));
+                              }}
+                              className="font-medium border-none shadow-none p-0 h-auto focus-visible:ring-0 w-full max-w-[200px] bg-transparent"
+                            />
+                            
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => {
+                                const newPrompts = [...settings.ai.prompts];
+                                newPrompts.splice(idx, 1);
+                                setSettings(prev => ({ ...prev, ai: { ...prev.ai, prompts: newPrompts } }));
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <Textarea 
+                            value={prompt.prompt}
+                            onChange={(e) => {
+                              const newPrompts = [...settings.ai.prompts];
+                              newPrompts[idx] = { ...newPrompts[idx], prompt: e.target.value };
+                              setSettings(prev => ({ ...prev, ai: { ...prev.ai, prompts: newPrompts } }));
+                            }}
+                            className="min-h-[150px] font-mono text-xs"
+                          />
+                        </div>
+                      </SortableItem>
+                    ))}
                   </div>
-                  <Textarea 
-                    value={prompt.prompt}
-                    onChange={(e) => {
-                      const newPrompts = [...settings.ai.prompts];
-                      newPrompts[idx] = { ...newPrompts[idx], prompt: e.target.value };
-                      setSettings(prev => ({ ...prev, ai: { ...prev.ai, prompts: newPrompts } }));
-                    }}
-                    className="min-h-[150px] font-mono text-xs"
-                  />
-                </div>
-              ))}
+                </SortableContext>
+              </DndContext>
             </div>
           </TabsContent>
         </Tabs>
