@@ -52,6 +52,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { AIConfiguration } from "@/components/ai-configuration";
+import { ModelStatusIndicator } from "@/components/model-status-indicator";
 import {
   Popover,
   PopoverContent,
@@ -791,95 +792,114 @@ export function FiltrationConditions() {
           {/* AI Settings */}
           <TabsContent value="ai" className="space-y-6 py-4">
             <div className="space-y-4 border rounded-lg p-4 bg-card">
-              <div className="flex items-center gap-2">
-                <Label className="text-base font-semibold">Consensus Mechanism</Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-md">
-                      <p>Run analysis with multiple models to improve accuracy.<br />
-                        - <strong>Single Model:</strong> Faster, relies on one model's decision.<br />
-                        - <strong>Consensus (2 out of 3):</strong> Runs 3 models. Requires 2 models to agree for a Positive/Negative decision. If split (e.g. 1 positive, 2 negative), the majority wins.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-
-              <div className="flex gap-4 items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={Array.isArray(settings.ai.model) && settings.ai.model.length > 1}
-                    onCheckedChange={(checked) => {
-                      // Toggle between single model (string) and multi-model (array)
-                      if (checked) {
-                        setSettings(prev => ({
-                          ...prev,
-                          ai: {
-                            ...prev.ai,
-                            model: ["llama3:8b", "llama3:8b", "llama3:8b"] // Default to 3 same models or user choice
-                          }
-                        }));
-                      } else {
-                        setSettings(prev => ({
-                          ...prev,
-                          ai: {
-                            ...prev.ai,
-                            model: Array.isArray(prev.ai.model) ? prev.ai.model[0] : prev.ai.model
-                          }
-                        }));
-                      }
-                    }}
-                  />
-                  <Label>Enable Multi-Model Consensus</Label>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs"
-                  onClick={() => {
-                    // Close this dialog and open AI Config
-                    setOpen(false);
-                    // Dispatch a custom event to open AI Config dialog
-                    window.dispatchEvent(new CustomEvent('openAIConfig'));
-                  }}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add New Model
-                </Button>
-              </div>
-
-              {Array.isArray(settings.ai.model) ? (
-                <div className="grid gap-3 pl-4 border-l-2 border-muted mt-2">
-                  <Label className="text-xs text-muted-foreground">Select 3 Models for Consensus (2/3 Vote):</Label>
-                  <div className="flex gap-2">
-                    {[0, 1, 2].map((i) => (
-                      <div key={i} className="flex-1 flex flex-col gap-1">
-                        <Label className="text-xs font-mono text-muted-foreground">Model #{i + 1}</Label>
-                        <ModelSelector
-                          value={(settings.ai.model as string[])[i]}
-                          onChange={(val) => {
-                            const newModels = [...(settings.ai.model as string[])];
-                            newModels[i] = val;
-                            setSettings(prev => ({ ...prev, ai: { ...prev.ai, model: newModels } }));
-                          }}
-                          placeholder="Select model..."
-                        />
-                      </div>
-                    ))}
+              {/* Implementing standard Collapsible pattern */}
+              <Collapsible defaultOpen className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base font-semibold">Consensus Mechanism</Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-md">
+                          <p>Run analysis with multiple models to improve accuracy.<br />
+                            - <strong>Single Model:</strong> Faster, relies on one model's decision.<br />
+                            - <strong>Consensus (2 out of 3):</strong> Runs 3 models. Requires 2 models to agree for a Positive/Negative decision. If split (e.g. 1 positive, 2 negative), the majority wins.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="w-9 p-0">
+                      <ChevronsUpDown className="h-4 w-4" />
+                      <span className="sr-only">Toggle</span>
+                    </Button>
+                  </CollapsibleTrigger>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Ollama Model</Label>
-                  <ModelSelector
-                    value={settings.ai.model as string}
-                    onChange={(val) => setSettings((prev: any) => ({ ...prev, ai: { ...prev.ai, model: val } }))}
-                    placeholder="Select model..."
-                  />
-                </div>
-              )}
+
+                <CollapsibleContent className="space-y-4 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden">
+                  <div className="flex gap-4 items-center justify-between pt-2">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={Array.isArray(settings.ai.model) && settings.ai.model.length > 1}
+                        onCheckedChange={(checked) => {
+                          // Toggle between single model (string) and multi-model (array)
+                          if (checked) {
+                            setSettings(prev => ({
+                              ...prev,
+                              ai: {
+                                ...prev.ai,
+                                model: ["llama3:8b", "llama3:8b", "llama3:8b"] // Default to 3 same models or user choice
+                              }
+                            }));
+                          } else {
+                            setSettings(prev => ({
+                              ...prev,
+                              ai: {
+                                ...prev.ai,
+                                model: Array.isArray(prev.ai.model) ? prev.ai.model[0] : prev.ai.model
+                              }
+                            }));
+                          }
+                        }}
+                      />
+                      <Label>Enable Multi-Model Consensus</Label>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs"
+                      onClick={() => {
+                        // Close this dialog and open AI Config
+                        setOpen(false);
+                        // Dispatch a custom event to open AI Config dialog
+                        window.dispatchEvent(new CustomEvent('openAIConfig'));
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add New Model
+                    </Button>
+                  </div>
+
+                  {Array.isArray(settings.ai.model) ? (
+                    <div className="grid gap-3 pl-4 border-l-2 border-muted mt-2">
+                      <Label className="text-xs text-muted-foreground">Select 3 Models for Consensus (2/3 Vote):</Label>
+                      <div className="flex gap-2">
+                        {[0, 1, 2].map((i) => (
+                          <div key={i} className="flex-1 flex flex-col gap-1">
+                            <div className="flex items-center justify-center gap-2">
+                              <Label className="text-xs font-mono text-muted-foreground">Model #{i + 1}</Label>
+                              <ModelStatusIndicator modelName={(settings.ai.model as string[])[i]} />
+                            </div>
+                            <ModelSelector
+                              value={(settings.ai.model as string[])[i]}
+                              onChange={(val) => {
+                                const newModels = [...(settings.ai.model as string[])];
+                                newModels[i] = val;
+                                setSettings(prev => ({ ...prev, ai: { ...prev.ai, model: newModels } }));
+                              }}
+                              placeholder="Select model..."
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Label>Ollama Model</Label>
+                        <ModelStatusIndicator modelName={settings.ai.model as string} />
+                      </div>
+                      <ModelSelector
+                        value={settings.ai.model as string}
+                        onChange={(val) => setSettings((prev: any) => ({ ...prev, ai: { ...prev.ai, model: val } }))}
+                        placeholder="Select model..."
+                      />
+                    </div>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
             </div>
 
             <div className="space-y-2">

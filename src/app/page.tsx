@@ -11,6 +11,7 @@ import { useStats } from "@/lib/hooks";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { FiltrationConditions } from "@/components/filtration-conditions";
+import { AIConfiguration } from "@/components/ai-configuration";
 import { Documentation } from "@/components/documentation";
 import { DatabaseManager } from "@/components/database-manager";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -50,6 +51,7 @@ export default function Home() {
           <div className="flex gap-2">
              <DatabaseManager />
              <FiltrationConditions />
+             <AIConfiguration />
              <Documentation />
              <ThemeToggle />
              <LanguageToggle />
